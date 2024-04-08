@@ -17,6 +17,8 @@ near-sdk = "5.0.0"
 borsh = "1.4.0"
 borsh-derive = "1.4.0"
 serde = "1.0.197"
+scale = { package = "parity-scale-codec", version = "3", default-features = false, features = ["derive"] }
+tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 
 [dev-dependencies]
 near-sdk = { version = "5.0.0", features = ["unit-testing"] }
