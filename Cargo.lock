@@ -2148,8 +2148,12 @@ dependencies = [
 name = "near-smart-contracts"
 version = "0.1.0"
 dependencies = [
+ "borsh 1.4.0",
+ "borsh-derive 1.4.0",
+ "hex",
  "near-sdk",
  "near-workspaces",
+ "serde",
  "serde_json",
  "tokio",
 ]
