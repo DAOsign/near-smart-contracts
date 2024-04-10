@@ -1,10 +1,10 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::near_bindgen;
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{near_bindgen};
-use scale::{Encode};
-use tiny_keccak::{Hasher, Keccak};
-use sp_io::crypto::secp256k1_ecdsa_recover_compressed;
+use scale::Encode;
 use secp256k1::PublicKey;
+use sp_io::crypto::secp256k1_ecdsa_recover_compressed;
+use tiny_keccak::{Hasher, Keccak};
 
 // # DAOsign EIP-712 Contract
 //
@@ -90,14 +90,18 @@ pub struct ProofOfAgreement {
 }
 
 /// EIP712PropertyType struct representing the structure of EIP-712 properties.
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+#[derive(
+    BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default,
+)]
 pub struct EIP712PropertyType {
     name: String,
     kind: String,
 }
 
 /// EIP712ProofOfAuthorityTypes struct representing the types for EIP-712 Proof-of-Authority.
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+#[derive(
+    BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default,
+)]
 pub struct EIP712ProofOfAuthorityTypes {
     pub eip712_domain: Vec<EIP712PropertyType>,
     pub signer: Vec<EIP712PropertyType>,
@@ -105,14 +109,18 @@ pub struct EIP712ProofOfAuthorityTypes {
 }
 
 /// EIP712ProofOfSignatureTypes struct representing the types for EIP-712 Proof-of-Signature.
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+#[derive(
+    BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default,
+)]
 pub struct EIP712ProofOfSignatureTypes {
     pub eip712_domain: Vec<EIP712PropertyType>,
     pub proof_of_signature: Vec<EIP712PropertyType>,
 }
 
 /// EIP712ProofOfAgreementTypes struct representing the types for EIP-712 Proof-of-Agreement.
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+#[derive(
+    BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default,
+)]
 pub struct EIP712ProofOfAgreementTypes {
     pub eip712_domain: Vec<EIP712PropertyType>,
     pub proof_of_agreement: Vec<EIP712PropertyType>,

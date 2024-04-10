@@ -25,6 +25,12 @@ To deploy manually, install [`cargo-near`](https://github.com/near/cargo-near) a
 cargo near deploy <account-id>
 ```
 
+## Lint
+
+```bash
+cargo fmt
+```
+
 ## Useful Links
 
 - [cargo-near](https://github.com/near/cargo-near) - NEAR smart contract development toolkit for Rust
