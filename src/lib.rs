@@ -1,14 +1,17 @@
-// Find all our documentation at https://docs.near.org
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::{near_bindgen, /*log, env, AccountId*/};
-use near_sdk::serde::{Serialize, Deserialize};
+use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::{near_bindgen};
+use scale::{Encode};
 use tiny_keccak::{Hasher, Keccak};
-use scale::{/*Decode, */Encode};
-// use std::collections::HashMap;
+use sp_io::crypto::secp256k1_ecdsa_recover_compressed;
+use secp256k1::PublicKey;
 
-// Define the contract structure
+// # DAOsign EIP-712 Contract
+//
+// This is a helper contract that is used by `daosign_app` which helps to verify EIP-712 signatures,
+// and is tailored specifically to `daosign_app` contract.
 #[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, Debug, Clone, PartialEq, Eq)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct DAOsignEIP712 {
     pub domain: EIP712Domain,
     pub domain_hash: [u8; 32],
@@ -22,6 +25,11 @@ pub struct DAOsignEIP712 {
     pub proof_of_agreement_types: EIP712ProofOfAgreementTypes,
 }
 
+//
+// Structs definitions
+//
+
+/// EIP-712 Domain struct representing the domain-specific parameters for signature verification.
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(crate = "near_sdk::serde")]
 pub struct EIP712Domain {
@@ -35,13 +43,15 @@ pub struct EIP712Domain {
     pub verifying_contract: [u8; 32],
 }
 
+/// Signer struct representing an address and associated metadata.
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(crate = "near_sdk::serde")]
- pub struct Signer {
+pub struct Signer {
     pub addr: [u8; 32],
     pub metadata: String,
 }
 
+/// ProofOfAuthority struct representing the Proof-of-Authority parameters.
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(crate = "near_sdk::serde")]
 pub struct ProofOfAuthority {
@@ -55,6 +65,7 @@ pub struct ProofOfAuthority {
     pub metadata: String,
 }
 
+/// ProofOfSignature struct representing the Proof-of-Signature parameters.
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct ProofOfSignature {
     pub name: String,
@@ -66,6 +77,7 @@ pub struct ProofOfSignature {
     pub metadata: String,
 }
 
+/// ProofOfAgreement struct representing the Proof-of-Agreement parameters.
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(crate = "near_sdk::serde")]
 pub struct ProofOfAgreement {
@@ -77,32 +89,37 @@ pub struct ProofOfAgreement {
     pub metadata: String,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Debug, Clone, PartialEq, Eq, Default)]
+/// EIP712PropertyType struct representing the structure of EIP-712 properties.
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct EIP712PropertyType {
     name: String,
     kind: String,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Debug, Clone, PartialEq, Eq, Default)]
+/// EIP712ProofOfAuthorityTypes struct representing the types for EIP-712 Proof-of-Authority.
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct EIP712ProofOfAuthorityTypes {
     pub eip712_domain: Vec<EIP712PropertyType>,
     pub signer: Vec<EIP712PropertyType>,
     pub proof_of_authority: Vec<EIP712PropertyType>,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Debug, Clone, PartialEq, Eq, Default)]
+/// EIP712ProofOfSignatureTypes struct representing the types for EIP-712 Proof-of-Signature.
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct EIP712ProofOfSignatureTypes {
     pub eip712_domain: Vec<EIP712PropertyType>,
     pub proof_of_signature: Vec<EIP712PropertyType>,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Debug, Clone, PartialEq, Eq, Default)]
+/// EIP712ProofOfAgreementTypes struct representing the types for EIP-712 Proof-of-Agreement.
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct EIP712ProofOfAgreementTypes {
     pub eip712_domain: Vec<EIP712PropertyType>,
     pub proof_of_agreement: Vec<EIP712PropertyType>,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Debug, Clone, PartialEq, Eq)]
+/// EIP712ProofOfAuthority struct representing the EIP-712 message for Proof-of-Authority.
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct EIP712ProofOfAuthority {
     types: EIP712ProofOfAuthorityTypes,
     domain: EIP712Domain,
@@ -110,7 +127,8 @@ pub struct EIP712ProofOfAuthority {
     message: ProofOfAuthority,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Debug, Clone, PartialEq, Eq)]
+/// EIP712ProofOfSignature struct representing the EIP-712 message for Proof-of-Signature.
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct EIP712ProofOfSignature {
     types: EIP712ProofOfSignatureTypes,
     domain: EIP712Domain,
@@ -118,7 +136,8 @@ pub struct EIP712ProofOfSignature {
     message: ProofOfSignature,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Debug, Clone, PartialEq, Eq)]
+/// EIP712ProofOfAgreement struct representing the EIP-712 message for Proof-of-Agreement.
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct EIP712ProofOfAgreement {
     types: EIP712ProofOfAgreementTypes,
     domain: EIP712Domain,
@@ -129,6 +148,18 @@ pub struct EIP712ProofOfAgreement {
 // Implement the contract structure
 #[near_bindgen]
 impl DAOsignEIP712 {
+    /// # Constructor for creating a new DAOsignEIP712 instance.
+    ///
+    /// This constructor initializes a new DAOsignEIP712 contract instance with the provided EIP712 domain.
+    /// It sets up the domain hash, type hashes, and EIP712 types needed for hashing proofs.
+    ///
+    /// # Arguments
+    ///
+    /// * `domain` - EIP712Domain struct representing the domain of the contract.
+    ///
+    /// # Returns
+    ///
+    /// A new instance of DAOsignEIP712.
     #[init]
     pub fn new(domain: EIP712Domain) -> Self {
         let mut instance = Self {
@@ -321,18 +352,23 @@ impl DAOsignEIP712 {
     /// # Returns
     ///
     /// A 20-byte array representing the Ethereum address recovered from the signature.
-    pub fn recover(&self, message: [u8; 32], sig: String) -> [u8; 20] {
-        // let sig_bytes = hex::decode(sig).expect("Invalid hex in signature");
-        // // Recover the public key from the signature
-        // let mut uncompressed_public_key = [0; 33];
-        // let _ = ink::env::ecdsa_recover(&sig_bytes, &message, &mut uncompressed_public_key);
+    pub fn recover(&self, message: [u8; 32], sig: Vec<u8>) -> [u8; 20] {
+        let sig_arr: [u8; 65] = sig.try_into().expect("Expected a Vec<u8> of length 65");
+        let output: [u8; 20];
 
-        // // Convert public key to Ethereum address
-        // let mut account_id_bytes = [0; 20];
-        // let _ = ink::env::ecdsa_to_eth_address(&uncompressed_public_key, &mut account_id_bytes);
+        if let Ok(compressed_public_key) = secp256k1_ecdsa_recover_compressed(&sig_arr, &message) {
+            // Recover the public key from the signature
+            let pk = PublicKey::from_slice(compressed_public_key.as_ref()).unwrap();
+            let uncompressed = pk.serialize_uncompressed();
 
-        // account_id_bytes
-        [0; 20]
+            // Convert public key to Ethereum address
+            let hash = Self::keccak_hash_bytes(&uncompressed[1..]);
+            output = (&hash[12..]).try_into().unwrap();
+        } else {
+            panic!("Recovery failed!");
+        }
+
+        output
     }
 
     /// # Recover function for Proof of Authority, retrieving the Ethereum address from a signature.
@@ -352,7 +388,7 @@ impl DAOsignEIP712 {
     pub fn recover_proof_of_authority(
         &self,
         data: ProofOfAuthority,
-        signature: String,
+        signature: Vec<u8>,
     ) -> [u8; 20] {
         let packet_hash = self.hash_proof_of_authority(data);
 
@@ -384,7 +420,7 @@ impl DAOsignEIP712 {
     pub fn recover_proof_of_signature(
         &self,
         data: ProofOfSignature,
-        signature: String,
+        signature: Vec<u8>,
     ) -> [u8; 20] {
         let packet_hash = self.hash_proof_of_signature(data);
 
@@ -416,7 +452,7 @@ impl DAOsignEIP712 {
     pub fn recover_proof_of_agreement(
         &self,
         data: ProofOfAgreement,
-        signature: String,
+        signature: Vec<u8>,
     ) -> [u8; 20] {
         let packet_hash = self.hash_proof_of_agreement(data);
 
@@ -518,7 +554,9 @@ impl DAOsignEIP712 {
     ///
     /// This function initializes the type hashes for EIP712Domain, Signer, Proof-of-Authority, Proof-of-Signature, and Proof-of-Agreement.
     fn init_typehashes(&mut self) -> () {
-        self.eip712domain_typehash = Self::keccak_hash("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+        self.eip712domain_typehash = Self::keccak_hash(
+            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)",
+        );
         self.signer_typehash = Self::keccak_hash("Signer(address addr,string metadata)");
         self.proof_of_authority_typehash = Self::keccak_hash("ProofOfAuthority(string name,address from,string agreementCID,Signer[] signers,string app,uint256 timestamp,string metadata)Signer(address addr,string metadata)");
         self.proof_of_signature_typehash = Self::keccak_hash("ProofOfSignature(string name,address signer,string agreementCID,string app,uint256 timestamp,string metadata)");
@@ -697,25 +735,10 @@ impl DAOsignEIP712 {
     }
 }
 
-/*
- * The rest of this file holds the inline tests for the code above
- * Learn more about Rust tests: https://doc.rust-lang.org/book/ch11-01-writing-tests.html
- */
 #[cfg(test)]
 mod tests {
     use super::*;
     use hex::FromHex;
-    // use hex::decode;
-    // use hex::FromHexError;
-    // use near_sdk::{test_utils::{accounts, VMContextBuilder}, testing_env, VMContext};
-
-    // // Helper function to set up the blockchain context for tests
-    // fn get_context(is_view: bool) -> VMContext {
-    //     VMContextBuilder::new()
-    //         .signer_account_id(accounts(0)) // accounts(0) is a default test account
-    //         .is_view(is_view)
-    //         .build()
-    // }
 
     #[test]
     fn constructor() {
@@ -992,17 +1015,143 @@ mod tests {
         assert_eq!(instance.hash_proof_of_agreement(data2), expected_hash2);
     }
 
-    // #[test]
-    // fn get_default_greeting() {
-    //     let contract = Contract::default();
-    //     // this test did not call set_greeting so should return the default "Hello" greeting
-    //     assert_eq!(contract.get_greeting(), "Hello");
-    // }
+    #[test]
+    fn recover() {
+        let instance = DAOsignEIP712::new(EIP712Domain {
+            name: "daosign".into(),
+            version: "0.1.0".into(),
+            chain_id: [0; 32],
+            verifying_contract: [0; 32].into(),
+        });
 
-    // #[test]
-    // fn set_then_get_greeting() {
-    //     let mut contract = Contract::default();
-    //     contract.set_greeting("howdy".to_string());
-    //     assert_eq!(contract.get_greeting(), "howdy");
-    // }
+        // Note: accounds, messages, and signatures are taken from DAOsign Solidity implementation
+        let signer_1 = <[u8; 20]>::from_hex("f39fd6e51aad88f6f4ce6ab8827279cfffb92266").unwrap();
+        let message_1 = <[u8; 32]>::from_hex(
+            "b4ba9fa5bd01eac4ecd44891aaf6393135b1f6591d58ee35c6ed8ec659c8e70a",
+        )
+        .unwrap();
+        let signature_1 = <[u8; 65]>::from_hex("554077fec636b586196831bd072559673dc34af8aea2cd98b05de209934fa7f034c5bc8da3c314c0cc0fa94dd70e31406fbb167b52a8ac9d916d0d30275ed6b41b").unwrap();
+        let message_2 = <[u8; 32]>::from_hex(
+            "c95811b04c82d394fb0bce7b59316f7932db448a15cbae7d74f3f8df0284fe01",
+        )
+        .unwrap();
+        let signature_2 = <[u8; 65]>::from_hex("db447694c8688c5b057d131f90cde25ec656fee4467c78243063e98e37523799311df7f7527b6d3eba0c84d6d5faa9f257e837496890f545a2a4d10611ce6d331c").unwrap();
+
+        assert_eq!(instance.recover(message_1, signature_1.to_vec()), signer_1);
+        assert_eq!(instance.recover(message_2, signature_2.to_vec()), signer_1);
+    }
+
+    #[test]
+    fn recover_proof_of_authority() {
+        let instance = DAOsignEIP712::new(EIP712Domain {
+            name: "daosign".into(),
+            version: "0.1.0".into(),
+            chain_id: [0; 32],
+            verifying_contract: [0; 32].into(),
+        });
+
+        // prepare timestamp
+        let timestamp1: u64 = 1701990045;
+        let timestamp1_bytes = timestamp1.to_be_bytes();
+        let mut timestamp1_arr: [u8; 32] = [0; 32];
+        timestamp1_arr[24..].copy_from_slice(&timestamp1_bytes);
+
+        // prepare signer & signature
+        let signer1 = <[u8; 20]>::from_hex("f39fd6e51aad88f6f4ce6ab8827279cfffb92266").unwrap();
+        let signature1 = <[u8; 65]>::from_hex("65cc7b7ba2a2c61cddd5522a65e0a01fc8b5e0846adc743cf7874bc99a68f76072439f0eac2d61e9d4f59b8e8c40c35c50d645d2c2ea6cb2cfed34e0c05373b01b").unwrap();
+        let mut signer1_arr: [u8; 32] = [0; 32];
+        signer1_arr[12..].copy_from_slice(&signer1);
+
+        let message1 = ProofOfAuthority {
+            name: String::from("Proof-of-Authority"),
+            from: signer1_arr,
+            agreement_cid: String::from("agreementCID                                  "),
+            signers: Vec::from([Signer {
+                addr: signer1_arr,
+                metadata: String::from("metadata"),
+            }]),
+            app: String::from("daosign"),
+            timestamp: timestamp1_arr,
+            metadata: String::from("metadatas"),
+        };
+
+        assert_eq!(
+            instance.recover_proof_of_authority(message1, signature1.to_vec()),
+            signer1
+        );
+    }
+
+    #[test]
+    fn recover_proof_of_signature() {
+        let instance = DAOsignEIP712::new(EIP712Domain {
+            name: "daosign".into(),
+            version: "0.1.0".into(),
+            chain_id: [0; 32],
+            verifying_contract: [0; 32].into(),
+        });
+
+        // prepare timestamp
+        let timestamp1: u64 = 1701990355;
+        let timestamp1_bytes = timestamp1.to_be_bytes();
+        let mut timestamp1_arr: [u8; 32] = [0; 32];
+        timestamp1_arr[24..].copy_from_slice(&timestamp1_bytes);
+
+        // prepare signer & signature
+        let signer1 = <[u8; 20]>::from_hex("f39fd6e51aad88f6f4ce6ab8827279cfffb92266").unwrap();
+        let signature1 = <[u8; 65]>::from_hex("acc5ef63564dcb4273272e9e52fb6ab585cfdf366187c1ff26c55d028fccad4803e9ed36739373c2ea4c27123fbc4a07504fd0512379a13a590f80213bb81e6b1b").unwrap();
+        let mut signer1_arr: [u8; 32] = [0; 32];
+        signer1_arr[12..].copy_from_slice(&signer1);
+
+        let message1 = ProofOfSignature {
+            name: String::from("Proof-of-Signature"),
+            signer: signer1_arr,
+            agreement_cid: String::from("agreementCID                                  "),
+            app: String::from("daosign"),
+            timestamp: timestamp1_arr,
+            metadata: String::from("metadata"),
+        };
+
+        assert_eq!(
+            instance.recover_proof_of_signature(message1, signature1.to_vec()),
+            signer1
+        );
+    }
+
+    #[test]
+    fn recover_proof_of_agreement() {
+        let instance = DAOsignEIP712::new(EIP712Domain {
+            name: "daosign".into(),
+            version: "0.1.0".into(),
+            chain_id: [0; 32],
+            verifying_contract: [0; 32].into(),
+        });
+
+        // prepare timestamp
+        let timestamp1: u64 = 1701990469;
+        let timestamp1_bytes = timestamp1.to_be_bytes();
+        let mut timestamp1_arr: [u8; 32] = [0; 32];
+        timestamp1_arr[24..].copy_from_slice(&timestamp1_bytes);
+
+        // prepare signer & signature
+        let signer1 = <[u8; 20]>::from_hex("f39fd6e51aad88f6f4ce6ab8827279cfffb92266").unwrap();
+        let signature1 = <[u8; 65]>::from_hex("7a6510c1ee7785a2019ea2ad009086fea5a3baa25f349c00a14707891ff9d0752c90a694d342010b52975501acf7f98abbe7640e8d685e73608118212eac432f1b").unwrap();
+        let mut signer1_arr: [u8; 32] = [0; 32];
+        signer1_arr[12..].copy_from_slice(&signer1);
+
+        let message1 = ProofOfAgreement {
+            agreement_cid: String::from("agreementCID                                  "),
+            signature_cids: Vec::from([
+                String::from("signatureCID0                                 "),
+                String::from("signatureCID1                                 "),
+            ]),
+            app: String::from("daosign"),
+            timestamp: timestamp1_arr,
+            metadata: String::from("metadata"),
+        };
+
+        assert_eq!(
+            instance.recover_proof_of_agreement(message1, signature1.to_vec()),
+            signer1
+        );
+    }
 }
