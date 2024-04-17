@@ -1200,7 +1200,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "daosign_proof_of_agreement"
+version = "1.0.0"
+dependencies = [
+ "borsh 1.4.0",
+ "borsh-derive 1.4.0",
+ "daosign_eip712",
+ "hex",
+ "near-sdk",
+ "serde",
+]
+
+[[package]]
 name = "daosign_proof_of_authority"
+version = "1.0.0"
+dependencies = [
+ "borsh 1.4.0",
+ "borsh-derive 1.4.0",
+ "daosign_eip712",
+ "hex",
+ "near-sdk",
+ "serde",
+]
+
+[[package]]
+name = "daosign_proof_of_signature"
 version = "1.0.0"
 dependencies = [
  "borsh 1.4.0",
