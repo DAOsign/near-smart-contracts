@@ -1,18 +1,13 @@
 mod daosign_app {
     use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-    use near_sdk::{env, near_bindgen, AccountId, PanicOnDefault};
+    use near_sdk::{log, near_bindgen};
     use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
 
-    use daosign_eip712::{recover, EIP712Domain, EIP712Message, Packable};
+    use daosign_eip712::{recover, EIP712Domain};
     use daosign_proof_of_agreement::ProofOfAgreement;
     use daosign_proof_of_authority::ProofOfAuthority;
     use daosign_proof_of_signature::ProofOfSignature;
-
-    // Length of IPFS Content Identifier (CID)
-    const IPFS_CID_LENGTH: usize = 46;
-    // Default value for zero address
-    const ZERO_ADDR: [u8; 20] = [0u8; 20];
 
     //
     // structs definition
@@ -48,48 +43,9 @@ mod daosign_app {
         proof_cid: String,
     }
 
-    /// Represents a signed Proof-of-Authority with the EIP712 message, signature, and proof CID.
-    // TODO #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-    pub struct SignedProofOfAuthorityMsg {
-        message: EIP712Message<ProofOfAuthority>,
-        signature: Vec<u8>,
-    }
-
-    /// Represents a signed Proof-of-Signature with the EIP712 message, signature, and proof CID.
-    // TODO #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-    pub struct SignedProofOfSignatureMsg {
-        message: EIP712Message<ProofOfSignature>,
-        signature: Vec<u8>,
-    }
-
-    /// Represents a signed Proof-of-Agreement with the EIP712 message, signature, and proof CID.
-    // TODO #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-    pub struct SignedProofOfAgreementMsg {
-        message: EIP712Message<ProofOfAgreement>,
-        signature: Vec<u8>,
-    }
-
     //
     // DAOsignApp contract
     //
-
-    // /// Event emitted when a new Proof-of-Authority is added.
-    // TODO #[ink(event)]
-    // pub struct NewProofOfAuthority {
-    //     data: SignedProofOfAuthority,
-    // }
-
-    // /// Event emitted when a new Proof-of-Signature is added.
-    // TODO #[ink(event)]
-    // pub struct NewProofOfSignature {
-    //     data: SignedProofOfSignature,
-    // }
-
-    // /// Event emitted when a new Proof-of-Agreement is added.
-    // TODO #[ink(event)]
-    // pub struct NewProofOfAgreement {
-    //     data: SignedProofOfAgreement,
-    // }
 
     /// Main storage structure for DAOsignApp contract.
     #[near_bindgen]
@@ -107,6 +63,11 @@ mod daosign_app {
 
     #[near_bindgen]
     impl DAOSignApp {
+        // Length of IPFS Content Identifier (CID)
+        const IPFS_CID_LENGTH: usize = 46;
+        // Default value for zero address
+        const ZERO_ADDR: [u8; 20] = [0u8; 20];
+
         /// # Constructor for creating a new DAOsignApp instance.
         ///
         /// This constructor initializes a new DAOsignApp contract instance with the provided EIP712 domain.
@@ -138,6 +99,7 @@ mod daosign_app {
         /// # Arguments
         ///
         /// * `data` - SignedProofOfAuthority struct containing the proof of authority data and its signature.
+        #[payable]
         pub fn store_proof_of_authority(&mut self, data: SignedProofOfAuthority) {
             assert!(
                 recover(
@@ -169,7 +131,7 @@ mod daosign_app {
             self.proof2signer
                 .insert(data.proof_cid.clone(), data.message.from);
 
-            // Self::env().emit_event(NewProofOfAuthority { data });
+            log!("Event: NewProofOfAuthority {{ data: {:?} }}", data);
         }
 
         /// # Message to store a Proof of Signature.
@@ -180,6 +142,7 @@ mod daosign_app {
         /// # Arguments
         ///
         /// * `data` - SignedProofOfSignature struct containing the proof of signature data and its signature.
+        #[payable]
         pub fn store_proof_of_signature(&mut self, data: SignedProofOfSignature) {
             assert!(
                 recover(
@@ -205,7 +168,7 @@ mod daosign_app {
             self.proof2signer
                 .insert(data.proof_cid.clone(), data.message.signer);
 
-            // Self::env().emit_event(NewProofOfSignature { data });
+            log!("Event: NewProofOfSignature {{ data: {:?} }}", data);
         }
 
         /// # Message to store a Proof of Agreement.
@@ -215,6 +178,7 @@ mod daosign_app {
         /// # Arguments
         ///
         /// * `data` - SignedProofOfAgreement struct containing the proof of agreement data.
+        #[payable]
         pub fn store_proof_of_agreement(&mut self, data: SignedProofOfAgreement) {
             // Validate the data
             assert!(
@@ -225,7 +189,7 @@ mod daosign_app {
             // Store
             self.poags.insert(data.proof_cid.clone(), data.clone());
 
-            // Self::env().emit_event(NewProofOfAgreement { data });
+            log!("Event: NewProofOfAgreement {{ data: {:?} }}", data);
         }
 
         /// # Message to retrieve a Proof of Authority by its CID.
@@ -256,7 +220,7 @@ mod daosign_app {
         ///
         /// # Arguments
         ///
-        /// * `cid` - String representing the CID of the Proof of Agreement.
+        /// * `cid` - String representing the CID of the Proof of Agreement.\
         pub fn get_proof_of_agreement(&self, cid: String) -> SignedProofOfAgreement {
             self.poags.get(&cid).unwrap().clone()
         }
@@ -272,18 +236,21 @@ mod daosign_app {
         /// # Returns
         ///
         /// Returns `true` if the validation passes, otherwise raises assertions.
-        fn validate_signed_proof_of_authority(&self, data: &SignedProofOfAuthority) -> bool {
-            assert!(data.proof_cid.len() == IPFS_CID_LENGTH, "Invalid proof CID");
+        pub fn validate_signed_proof_of_authority(&self, data: &SignedProofOfAuthority) -> bool {
+            assert!(
+                data.proof_cid.len() == Self::IPFS_CID_LENGTH,
+                "Invalid proof CID"
+            );
             assert!(
                 data.message.name == "Proof-of-Authority",
                 "Invalid proof name"
             );
             assert!(
-                data.message.agreement_cid.len() == IPFS_CID_LENGTH,
+                data.message.agreement_cid.len() == Self::IPFS_CID_LENGTH,
                 "Invalid agreement CID"
             );
             for signer in data.message.signers.iter() {
-                assert!(signer.addr != ZERO_ADDR, "Invalid signer");
+                assert!(signer.addr != Self::ZERO_ADDR, "Invalid signer");
             }
             true
         }
@@ -299,8 +266,11 @@ mod daosign_app {
         /// # Returns
         ///
         /// Returns `true` if the validation passes, otherwise raises assertions.
-        fn validate_signed_proof_of_signature(&self, data: &SignedProofOfSignature) -> bool {
-            assert!(data.proof_cid.len() == IPFS_CID_LENGTH, "Invalid proof CID");
+        pub fn validate_signed_proof_of_signature(&self, data: &SignedProofOfSignature) -> bool {
+            assert!(
+                data.proof_cid.len() == Self::IPFS_CID_LENGTH,
+                "Invalid proof CID"
+            );
             assert!(
                 data.message.name == "Proof-of-Signature",
                 "Invalid proof name"
@@ -337,8 +307,11 @@ mod daosign_app {
         /// # Returns
         ///
         /// Returns `true` if the validation passes, otherwise raises assertions.
-        fn validate_signed_proof_of_agreement(&self, data: &SignedProofOfAgreement) -> bool {
-            assert!(data.proof_cid.len() == IPFS_CID_LENGTH, "Invalid proof CID");
+        pub fn validate_signed_proof_of_agreement(&self, data: &SignedProofOfAgreement) -> bool {
+            assert!(
+                data.proof_cid.len() == Self::IPFS_CID_LENGTH,
+                "Invalid proof CID"
+            );
             assert!(
                 self.poaus
                     .get(&data.message.authority_cid)
