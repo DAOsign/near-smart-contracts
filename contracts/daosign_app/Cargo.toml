@@ -13,6 +13,10 @@ borsh = "1.4.0"
 borsh-derive = "1.4.0"
 serde = { version = "1.0.197", features = ["derive"] }
 scale = { package = "parity-scale-codec", version = "3", default-features = false, features = ["derive"] }
+daosign_eip712 = { path = "../daosign_eip712" }
+daosign_proof_of_agreement = { path = "../daosign_proof_of_agreement" }
+daosign_proof_of_authority = { path = "../daosign_proof_of_authority" }
+daosign_proof_of_signature = { path = "../daosign_proof_of_signature" }
 
 [dev-dependencies]
 near-sdk = { version = "5.0.0", features = ["unit-testing"] }

@@ -1171,6 +1171,10 @@ version = "1.0.0"
 dependencies = [
  "borsh 1.4.0",
  "borsh-derive 1.4.0",
+ "daosign_eip712",
+ "daosign_proof_of_agreement",
+ "daosign_proof_of_authority",
+ "daosign_proof_of_signature",
  "hex",
  "near-sdk",
  "near-workspaces",

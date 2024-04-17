@@ -1,11 +1,10 @@
-#![cfg_attr(not(feature = "std"), no_std, no_main)]
-
-#[ink::contract]
 mod daosign_app {
-    use ink::prelude::{string::String, vec::Vec};
-    use ink::storage::Mapping;
+    use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+    use near_sdk::{env, near_bindgen, AccountId, PanicOnDefault};
+    use serde::{Deserialize, Serialize};
+    use std::collections::HashMap;
 
-    use daosign_eip712::{recover, EIP712Domain, EIP712Message};
+    use daosign_eip712::{recover, EIP712Domain, EIP712Message, Packable};
     use daosign_proof_of_agreement::ProofOfAgreement;
     use daosign_proof_of_authority::ProofOfAuthority;
     use daosign_proof_of_signature::ProofOfSignature;
@@ -20,9 +19,9 @@ mod daosign_app {
     //
 
     /// Represents a signed Proof-of-Authority with the message, signature, and proof CID.
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    #[ink::scale_derive(Encode, Decode, TypeInfo)]
-    #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    #[derive(
+        BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq,
+    )]
     pub struct SignedProofOfAuthority {
         message: ProofOfAuthority,
         signature: Vec<u8>,
@@ -30,9 +29,9 @@ mod daosign_app {
     }
 
     /// Represents a signed Proof-of-Signature with the message, signature, and proof CID.
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    #[ink::scale_derive(Encode, Decode, TypeInfo)]
-    #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    #[derive(
+        BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq,
+    )]
     pub struct SignedProofOfSignature {
         message: ProofOfSignature,
         signature: Vec<u8>,
@@ -40,9 +39,9 @@ mod daosign_app {
     }
 
     /// Represents a signed Proof-of-Agreement with the message, signature, and proof CID.
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    #[ink::scale_derive(Encode, Decode, TypeInfo)]
-    #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    #[derive(
+        BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq,
+    )]
     pub struct SignedProofOfAgreement {
         message: ProofOfAgreement,
         signature: Vec<u8>,
@@ -50,21 +49,21 @@ mod daosign_app {
     }
 
     /// Represents a signed Proof-of-Authority with the EIP712 message, signature, and proof CID.
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    // TODO #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
     pub struct SignedProofOfAuthorityMsg {
         message: EIP712Message<ProofOfAuthority>,
         signature: Vec<u8>,
     }
 
     /// Represents a signed Proof-of-Signature with the EIP712 message, signature, and proof CID.
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    // TODO #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
     pub struct SignedProofOfSignatureMsg {
         message: EIP712Message<ProofOfSignature>,
         signature: Vec<u8>,
     }
 
     /// Represents a signed Proof-of-Agreement with the EIP712 message, signature, and proof CID.
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    // TODO #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
     pub struct SignedProofOfAgreementMsg {
         message: EIP712Message<ProofOfAgreement>,
         signature: Vec<u8>,
@@ -74,37 +73,41 @@ mod daosign_app {
     // DAOsignApp contract
     //
 
-    /// Event emitted when a new Proof-of-Authority is added.
-    #[ink(event)]
-    pub struct NewProofOfAuthority {
-        data: SignedProofOfAuthority,
-    }
+    // /// Event emitted when a new Proof-of-Authority is added.
+    // TODO #[ink(event)]
+    // pub struct NewProofOfAuthority {
+    //     data: SignedProofOfAuthority,
+    // }
 
-    /// Event emitted when a new Proof-of-Signature is added.
-    #[ink(event)]
-    pub struct NewProofOfSignature {
-        data: SignedProofOfSignature,
-    }
+    // /// Event emitted when a new Proof-of-Signature is added.
+    // TODO #[ink(event)]
+    // pub struct NewProofOfSignature {
+    //     data: SignedProofOfSignature,
+    // }
 
-    /// Event emitted when a new Proof-of-Agreement is added.
-    #[ink(event)]
-    pub struct NewProofOfAgreement {
-        data: SignedProofOfAgreement,
-    }
+    // /// Event emitted when a new Proof-of-Agreement is added.
+    // TODO #[ink(event)]
+    // pub struct NewProofOfAgreement {
+    //     data: SignedProofOfAgreement,
+    // }
 
     /// Main storage structure for DAOsignApp contract.
-    #[ink(storage)]
+    #[near_bindgen]
+    #[derive(
+        BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq,
+    )]
     pub struct DAOSignApp {
         domain: EIP712Domain,
-        poaus: Mapping<String, SignedProofOfAuthority>,
-        posis: Mapping<String, SignedProofOfSignature>,
-        poags: Mapping<String, SignedProofOfAgreement>,
-        proof2signer: Mapping<String, [u8; 20]>,
-        poau_signers_idx: Mapping<(String, [u8; 20]), u32>,
+        poaus: HashMap<String, SignedProofOfAuthority>,
+        posis: HashMap<String, SignedProofOfSignature>,
+        poags: HashMap<String, SignedProofOfAgreement>,
+        proof2signer: HashMap<String, [u8; 20]>,
+        poau_signers_idx: HashMap<(String, [u8; 20]), u32>,
     }
 
+    #[near_bindgen]
     impl DAOSignApp {
-        /// # Ink! constructor for creating a new DAOsignApp instance.
+        /// # Constructor for creating a new DAOsignApp instance.
         ///
         /// This constructor initializes a new DAOsignApp contract instance with the provided EIP712 domain.
         ///
@@ -115,19 +118,19 @@ mod daosign_app {
         /// # Returns
         ///
         /// A new instance of DAOsignApp.
-        #[ink(constructor)]
+        #[init]
         pub fn new(domain: EIP712Domain) -> Self {
             Self {
                 domain,
-                poaus: Mapping::new(),
-                posis: Mapping::new(),
-                poags: Mapping::new(),
-                proof2signer: Mapping::new(),
-                poau_signers_idx: Mapping::new(),
+                poaus: HashMap::new(),
+                posis: HashMap::new(),
+                poags: HashMap::new(),
+                proof2signer: HashMap::new(),
+                poau_signers_idx: HashMap::new(),
             }
         }
 
-        /// # Ink! message to store a Proof of Authority.
+        /// # Message to store a Proof of Authority.
         ///
         /// This function stores a Proof of Authority along with its signature and validates the signature and message.
         /// If the data is valid, it is stored in the contract, and relevant mappings are updated.
@@ -135,7 +138,6 @@ mod daosign_app {
         /// # Arguments
         ///
         /// * `data` - SignedProofOfAuthority struct containing the proof of authority data and its signature.
-        #[ink(message)]
         pub fn store_proof_of_authority(&mut self, data: SignedProofOfAuthority) {
             assert!(
                 recover(
@@ -155,22 +157,22 @@ mod daosign_app {
             );
 
             // Store
-            self.poaus.insert(data.proof_cid.clone(), &data.clone());
+            self.poaus.insert(data.proof_cid.clone(), data.clone());
 
             // Update the signer indices and push new signers
             for (i, signer) in data.message.signers.iter().enumerate() {
                 self.poau_signers_idx
-                    .insert((data.proof_cid.clone(), signer.addr), &(i as u32));
+                    .insert((data.proof_cid.clone(), signer.addr), i as u32);
             }
 
             // Update proof to signer mapping
             self.proof2signer
-                .insert(data.proof_cid.clone(), &data.message.from);
+                .insert(data.proof_cid.clone(), data.message.from);
 
-            Self::env().emit_event(NewProofOfAuthority { data });
+            // Self::env().emit_event(NewProofOfAuthority { data });
         }
 
-        /// # Ink! message to store a Proof of Signature.
+        /// # Message to store a Proof of Signature.
         ///
         /// This function stores a Proof of Signature along with its signature and validates the signature and message.
         /// If the data is valid, it is stored in the contract, and relevant mappings are updated.
@@ -178,7 +180,6 @@ mod daosign_app {
         /// # Arguments
         ///
         /// * `data` - SignedProofOfSignature struct containing the proof of signature data and its signature.
-        #[ink(message)]
         pub fn store_proof_of_signature(&mut self, data: SignedProofOfSignature) {
             assert!(
                 recover(
@@ -198,23 +199,22 @@ mod daosign_app {
             );
 
             // Store
-            self.posis.insert(data.proof_cid.clone(), &data.clone());
+            self.posis.insert(data.proof_cid.clone(), data.clone());
 
             // Update proof to signer mapping
             self.proof2signer
-                .insert(data.proof_cid.clone(), &data.message.signer);
+                .insert(data.proof_cid.clone(), data.message.signer);
 
-            Self::env().emit_event(NewProofOfSignature { data });
+            // Self::env().emit_event(NewProofOfSignature { data });
         }
 
-        /// # Ink! message to store a Proof of Agreement.
+        /// # Message to store a Proof of Agreement.
         ///
         /// This function stores a Proof of Agreement and validates the message. If the data is valid, it is stored in the contract.
         ///
         /// # Arguments
         ///
         /// * `data` - SignedProofOfAgreement struct containing the proof of agreement data.
-        #[ink(message)]
         pub fn store_proof_of_agreement(&mut self, data: SignedProofOfAgreement) {
             // Validate the data
             assert!(
@@ -223,45 +223,42 @@ mod daosign_app {
             );
 
             // Store
-            self.poags.insert(data.proof_cid.clone(), &data.clone());
+            self.poags.insert(data.proof_cid.clone(), data.clone());
 
-            Self::env().emit_event(NewProofOfAgreement { data });
+            // Self::env().emit_event(NewProofOfAgreement { data });
         }
 
-        /// # Ink! message to retrieve a Proof of Authority by its CID.
+        /// # Message to retrieve a Proof of Authority by its CID.
         ///
         /// This function retrieves a stored Proof of Authority by its CID.
         ///
         /// # Arguments
         ///
         /// * `cid` - String representing the CID of the Proof of Authority.
-        #[ink(message)]
         pub fn get_proof_of_authority(&self, cid: String) -> SignedProofOfAuthority {
-            self.poaus.get(cid).unwrap()
+            self.poaus.get(&cid).unwrap().clone()
         }
 
-        /// # Ink! message to retrieve a Proof of Signature by its CID.
+        /// # Message to retrieve a Proof of Signature by its CID.
         ///
         /// This function retrieves a stored Proof of Signature by its CID.
         ///
         /// # Arguments
         ///
         /// * `cid` - String representing the CID of the Proof of Signature.
-        #[ink(message)]
         pub fn get_proof_of_signature(&self, cid: String) -> SignedProofOfSignature {
-            self.posis.get(cid).unwrap()
+            self.posis.get(&cid).unwrap().clone()
         }
 
-        /// # Ink! message to retrieve a Proof of Agreement by its CID.
+        /// # Message to retrieve a Proof of Agreement by its CID.
         ///
         /// This function retrieves a stored Proof of Agreement by its CID.
         ///
         /// # Arguments
         ///
         /// * `cid` - String representing the CID of the Proof of Agreement.
-        #[ink(message)]
         pub fn get_proof_of_agreement(&self, cid: String) -> SignedProofOfAgreement {
-            self.poags.get(cid).unwrap()
+            self.poags.get(&cid).unwrap().clone()
         }
 
         /// # Validates a signed Proof-of-Authority message.
@@ -275,7 +272,7 @@ mod daosign_app {
         /// # Returns
         ///
         /// Returns `true` if the validation passes, otherwise raises assertions.
-        pub fn validate_signed_proof_of_authority(&self, data: &SignedProofOfAuthority) -> bool {
+        fn validate_signed_proof_of_authority(&self, data: &SignedProofOfAuthority) -> bool {
             assert!(data.proof_cid.len() == IPFS_CID_LENGTH, "Invalid proof CID");
             assert!(
                 data.message.name == "Proof-of-Authority",
@@ -302,19 +299,19 @@ mod daosign_app {
         /// # Returns
         ///
         /// Returns `true` if the validation passes, otherwise raises assertions.
-        pub fn validate_signed_proof_of_signature(&self, data: &SignedProofOfSignature) -> bool {
+        fn validate_signed_proof_of_signature(&self, data: &SignedProofOfSignature) -> bool {
             assert!(data.proof_cid.len() == IPFS_CID_LENGTH, "Invalid proof CID");
             assert!(
                 data.message.name == "Proof-of-Signature",
                 "Invalid proof name"
             );
 
-            let i: usize = self
+            let i: usize = (*self
                 .poau_signers_idx
-                .get((&data.message.authority_cid, &data.message.signer))
-                .unwrap()
-                .try_into()
-                .unwrap();
+                .get(&(data.message.authority_cid.clone(), data.message.signer))
+                .unwrap())
+            .try_into()
+            .expect("Index conversion failed");
             assert!(
                 self.poaus
                     .get(&data.message.authority_cid)
@@ -340,7 +337,7 @@ mod daosign_app {
         /// # Returns
         ///
         /// Returns `true` if the validation passes, otherwise raises assertions.
-        pub fn validate_signed_proof_of_agreement(&self, data: &SignedProofOfAgreement) -> bool {
+        fn validate_signed_proof_of_agreement(&self, data: &SignedProofOfAgreement) -> bool {
             assert!(data.proof_cid.len() == IPFS_CID_LENGTH, "Invalid proof CID");
             assert!(
                 self.poaus
@@ -363,15 +360,15 @@ mod daosign_app {
             );
 
             for signature_cid in data.message.signature_cids.iter() {
-                let idx: usize = self
+                let idx: usize = (*self
                     .poau_signers_idx
-                    .get((
-                        &data.message.authority_cid,
-                        &self.posis.get(signature_cid).unwrap().message.signer,
+                    .get(&(
+                        data.message.authority_cid.clone(),
+                        self.posis.get(signature_cid).unwrap().message.signer,
                     ))
-                    .unwrap()
-                    .try_into()
-                    .unwrap();
+                    .unwrap())
+                .try_into()
+                .expect("Index conversion failed");
                 assert!(
                     self.poaus
                         .get(&data.message.authority_cid)
@@ -460,7 +457,7 @@ mod daosign_app {
             });
         }
 
-        #[ink::test]
+        #[test]
         fn test_store_proof_of_authority() {
             let mut instance = DAOSignApp::new(EIP712Domain {
                 name: "daosign".into(),
@@ -475,26 +472,20 @@ mod daosign_app {
 
             store_proof_of_authority(&mut instance);
 
+            assert_eq!(instance.poaus.get(&proof_cid).unwrap().signature, signature);
             assert_eq!(
-                instance.poaus.get(proof_cid.clone()).unwrap().signature,
-                signature
-            );
-            assert_eq!(
-                instance.poaus.get(proof_cid.clone()).unwrap().proof_cid,
+                instance.poaus.get(&proof_cid).unwrap().proof_cid,
                 proof_cid.clone()
             );
             assert_eq!(
-                instance.poaus.get(proof_cid.clone()).unwrap().message.name,
+                instance.poaus.get(&proof_cid).unwrap().message.name,
                 String::from("Proof-of-Authority")
             );
-            assert_eq!(
-                instance.poaus.get(proof_cid.clone()).unwrap().message.from,
-                from
-            );
+            assert_eq!(instance.poaus.get(&proof_cid).unwrap().message.from, from);
             assert_eq!(
                 instance
                     .poaus
-                    .get(proof_cid.clone())
+                    .get(&proof_cid)
                     .unwrap()
                     .message
                     .agreement_cid,
@@ -503,7 +494,7 @@ mod daosign_app {
             assert_eq!(
                 instance
                     .poaus
-                    .get(proof_cid.clone())
+                    .get(&proof_cid)
                     .unwrap()
                     .message
                     .signers
@@ -511,46 +502,24 @@ mod daosign_app {
                 1
             );
             assert_eq!(
-                instance
-                    .poaus
-                    .get(proof_cid.clone())
-                    .unwrap()
-                    .message
-                    .signers[0]
-                    .addr,
+                instance.poaus.get(&proof_cid).unwrap().message.signers[0].addr,
                 from
             );
             assert_eq!(
-                instance
-                    .poaus
-                    .get(proof_cid.clone())
-                    .unwrap()
-                    .message
-                    .signers[0]
-                    .metadata,
+                instance.poaus.get(&proof_cid).unwrap().message.signers[0].metadata,
                 String::from("some metadata")
             );
             assert_eq!(
-                instance
-                    .poaus
-                    .get(proof_cid.clone())
-                    .unwrap()
-                    .message
-                    .timestamp,
+                instance.poaus.get(&proof_cid).unwrap().message.timestamp,
                 timestamp
             );
             assert_eq!(
-                instance
-                    .poaus
-                    .get(proof_cid.clone())
-                    .unwrap()
-                    .message
-                    .metadata,
+                instance.poaus.get(&proof_cid).unwrap().message.metadata,
                 String::from("proof metadata")
             );
         }
 
-        #[ink::test]
+        #[test]
         fn test_store_proof_of_signature() {
             let mut instance = DAOSignApp::new(EIP712Domain {
                 name: "daosign".into(),
@@ -579,58 +548,40 @@ mod daosign_app {
             };
             instance.store_proof_of_signature(data.clone());
 
+            assert_eq!(instance.posis.get(&proof_cid).unwrap().signature, signature);
             assert_eq!(
-                instance.posis.get(proof_cid.clone()).unwrap().signature,
-                signature
-            );
-            assert_eq!(
-                instance.posis.get(proof_cid.clone()).unwrap().proof_cid,
+                instance.posis.get(&proof_cid).unwrap().proof_cid,
                 proof_cid.clone()
             );
 
             assert_eq!(
-                instance.posis.get(proof_cid.clone()).unwrap().message.name,
+                instance.posis.get(&proof_cid).unwrap().message.name,
                 String::from("Proof-of-Signature")
             );
             assert_eq!(
-                instance
-                    .posis
-                    .get(proof_cid.clone())
-                    .unwrap()
-                    .message
-                    .signer,
+                instance.posis.get(&proof_cid).unwrap().message.signer,
                 signer
             );
             assert_eq!(
                 instance
                     .posis
-                    .get(proof_cid.clone())
+                    .get(&proof_cid)
                     .unwrap()
                     .message
                     .authority_cid,
                 String::from("ProofOfAuthority proof cid                    ")
             );
             assert_eq!(
-                instance
-                    .posis
-                    .get(proof_cid.clone())
-                    .unwrap()
-                    .message
-                    .timestamp,
+                instance.posis.get(&proof_cid).unwrap().message.timestamp,
                 timestamp
             );
             assert_eq!(
-                instance
-                    .posis
-                    .get(proof_cid.clone())
-                    .unwrap()
-                    .message
-                    .metadata,
+                instance.posis.get(&proof_cid).unwrap().message.metadata,
                 String::from("proof metadata")
             );
         }
 
-        #[ink::test]
+        #[test]
         fn test_store_proof_of_agreement() {
             let mut instance = DAOSignApp::new(EIP712Domain {
                 name: "daosign".into(),
@@ -646,19 +597,16 @@ mod daosign_app {
             store_proof_of_signature(&mut instance);
             store_proof_of_agreement(&mut instance);
 
+            assert_eq!(instance.poags.get(&proof_cid).unwrap().signature, signature);
             assert_eq!(
-                instance.poags.get(proof_cid.clone()).unwrap().signature,
-                signature
-            );
-            assert_eq!(
-                instance.poags.get(proof_cid.clone()).unwrap().proof_cid,
+                instance.poags.get(&proof_cid).unwrap().proof_cid,
                 proof_cid.clone()
             );
 
             assert_eq!(
                 instance
                     .poags
-                    .get(proof_cid.clone())
+                    .get(&proof_cid)
                     .unwrap()
                     .message
                     .authority_cid,
@@ -667,7 +615,7 @@ mod daosign_app {
             assert_eq!(
                 instance
                     .poags
-                    .get(proof_cid.clone())
+                    .get(&proof_cid)
                     .unwrap()
                     .message
                     .signature_cids
@@ -677,33 +625,23 @@ mod daosign_app {
             assert_eq!(
                 instance
                     .poags
-                    .get(proof_cid.clone())
+                    .get(&proof_cid)
                     .unwrap()
                     .message
                     .signature_cids[0],
                 String::from("ProofOfSignature proof cid                    ")
             );
             assert_eq!(
-                instance
-                    .poags
-                    .get(proof_cid.clone())
-                    .unwrap()
-                    .message
-                    .timestamp,
+                instance.poags.get(&proof_cid).unwrap().message.timestamp,
                 timestamp
             );
             assert_eq!(
-                instance
-                    .poags
-                    .get(proof_cid.clone())
-                    .unwrap()
-                    .message
-                    .metadata,
+                instance.poags.get(&proof_cid).unwrap().message.metadata,
                 String::from("proof metadata")
             );
         }
 
-        #[ink::test]
+        #[test]
         fn test_get_proof_of_authority() {
             let mut instance = DAOSignApp::new(EIP712Domain {
                 name: "daosign".into(),
@@ -737,7 +675,7 @@ mod daosign_app {
             assert_eq!(proof.message.metadata, String::from("proof metadata"));
         }
 
-        #[ink::test]
+        #[test]
         fn test_get_proof_of_signature() {
             let mut instance = DAOSignApp::new(EIP712Domain {
                 name: "daosign".into(),
@@ -768,7 +706,7 @@ mod daosign_app {
             assert_eq!(proof.message.metadata, String::from("proof metadata"));
         }
 
-        #[ink::test]
+        #[test]
         fn test_get_proof_of_agreement() {
             let mut instance = DAOSignApp::new(EIP712Domain {
                 name: "daosign".into(),
