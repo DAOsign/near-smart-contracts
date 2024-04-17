@@ -1,11 +1,11 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::{env, near_bindgen, log};
+use near_sdk::{near_bindgen};
+use secp256k1::PublicKey;
 use serde::{Deserialize, Serialize};
+use sp_io::crypto::secp256k1_ecdsa_recover_compressed;
 use std::collections::HashMap;
 use std::io::Error;
 use tiny_keccak::{Hasher, Keccak};
-use secp256k1::PublicKey;
-use sp_io::crypto::secp256k1_ecdsa_recover_compressed;
 
 static EIP712DOMAIN_TYPEHASH: [u8; 32] = [
     139, 115, 195, 198, 155, 184, 254, 61, 81, 46, 204, 76, 247, 89, 204, 121, 35, 159, 123, 23,
@@ -17,13 +17,13 @@ pub trait Packable {
 }
 
 /// EIP712PropertyType struct representing the structure of EIP-712 properties.
-#[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct EIP712PropertyType {
     pub name: String,
     pub r#type: String,
 }
 
+#[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct EIP712Domain {
     pub name: String,
@@ -63,35 +63,14 @@ pub fn recover(
     message: &dyn Packable,
     signature: &[u8; 65],
 ) -> Result<[u8; 20], Error> {
-    // Ok([0; 20])
-    // let mut public_key = [0; 33];
-    // let mut msg = Vec::new();
-    // msg.extend_from_slice(b"\x19\x01");
-    // msg.extend_from_slice(&hash(domain));
-    // msg.extend_from_slice(&hash(message));
-    // match env::ecdsa_recover(signature, &sha3(&msg), &mut public_key) {
-    //     Ok(_) => {
-    //         let mut address = [0; 20];
-    //         match env::ecdsa_to_eth_address(&public_key, &mut address) {
-    //             Ok(_) => Ok(address),
-    //             Err(err) => Err(err),
-    //         }
-    //     }
-    //     Err(err) => Err(err),
-    // }
-
-    let mut public_key = [0; 33];
     let mut msg = Vec::new();
     msg.extend_from_slice(b"\x19\x01");
     msg.extend_from_slice(&hash(domain));
     msg.extend_from_slice(&hash(message));
 
-    // let sig_arr: [u8; 65] = signature.try_into().expect("Expected a Vec<u8> of length 65");
     let output: [u8; 20];
 
-    let msg_bytes = &msg.as_slice().try_into().unwrap();
-
-    if let Ok(compressed_public_key) = secp256k1_ecdsa_recover_compressed(&signature, &msg_bytes) {
+    if let Ok(compressed_public_key) = secp256k1_ecdsa_recover_compressed(&signature, &sha3(&msg)) {
         // Recover the public key from the signature
         let pk = PublicKey::from_slice(compressed_public_key.as_ref()).unwrap();
         let uncompressed = pk.serialize_uncompressed();
@@ -183,25 +162,4 @@ mod tests {
         .expect("bad hash value");
         assert_eq!(expected, struct_hash);
     }
-
-    // #[test]
-    // fn check_recover() {
-    //     let domain = EIP712Domain {
-    //         name: "daosign".into(),
-    //         version: "0.1.0".into(),
-    //         chain_id: 1,
-    //         verifying_contract: <[u8; 20]>::from_hex("0000000000000000000000000000000000000000")
-    //             .expect("bad address"),
-    //     };
-
-    //     // Note: accounts, messages, and signatures are taken from DAOsign Solidity implementation
-    //     let signer_1 = <[u8; 20]>::from_hex("f39fd6e51aad88f6f4ce6ab8827279cfffb92266").unwrap();
-    //     let message_1 = <[u8; 32]>::from_hex(
-    //         "b4ba9fa5bd01eac4ecd44891aaf6393135b1f6591d58ee35c6ed8ec659c8e70a",
-    //     )
-    //     .unwrap();
-    //     let signature_1 = <[u8; 65]>::from_hex("554077fec636b586196831bd072559673dc34af8aea2cd98b05de209934fa7f034c5bc8da3c314c0cc0fa94dd70e31406fbb167b52a8ac9d916d0d30275ed6b41b").unwrap();
-        
-    //     assert_eq!(recover(&domain, &domain, &signature_1).unwrap(), signer_1);
-    // }
 }

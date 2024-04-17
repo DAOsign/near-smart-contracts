@@ -1,0 +1,28 @@
+[package]
+name = "daosign_proof_of_authority"
+version = "1.0.0"
+authors = ["Misha Kushka, CIDT <https://consideritdone.tech>"]
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk = "5.0.0"
+serde = { version = "1.0.197", features = ["derive"] }
+daosign_eip712 = { path = "../daosign_eip712" }
+borsh = "1.4.0"
+borsh-derive = "1.4.0"
+
+[dev-dependencies]
+hex = { workspace = true }
+
+[profile.release]
+codegen-units = 1
+# Tell `rustc` to optimize for small code size.
+opt-level = "z"
+lto = true
+debug = false
+panic = "abort"
+# Opt into extra safety checks on arithmetic operations https://stackoverflow.com/a/64136471/249801
+overflow-checks = true
