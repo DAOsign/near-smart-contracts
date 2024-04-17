@@ -1200,24 +1200,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "daosign_eip712_old"
-version = "1.0.0"
-dependencies = [
- "borsh 1.4.0",
- "borsh-derive 1.4.0",
- "hex",
- "near-sdk",
- "near-workspaces",
- "parity-scale-codec",
- "secp256k1 0.29.0",
- "serde",
- "serde_json",
- "sp-io",
- "tiny-keccak",
- "tokio",
-]
-
-[[package]]
 name = "daosign_proof_of_authority"
 version = "1.0.0"
 dependencies = [

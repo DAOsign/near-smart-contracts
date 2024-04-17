@@ -1,8 +1,10 @@
+use daosign_eip712::{
+    eip712_domain_type, hash, sha3, EIP712Domain, EIP712Message, EIP712PropertyType, Packable,
+};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::{near_bindgen};
+use near_sdk::near_bindgen;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use daosign_eip712::{EIP712Domain, EIP712Message, EIP712PropertyType, Packable, eip712_domain_type, sha3, hash};
 
 static SIGNER_TYPEHASH: [u8; 32] = [
     103, 170, 64, 210, 111, 136, 159, 68, 236, 95, 236, 210, 27, 129, 43, 67, 175, 9, 116, 187,
@@ -170,11 +172,7 @@ mod tests {
         assert_eq!(expected_hash, hash(&message));
 
         let signature = <[u8; 65]>::from_hex("b2e9a6c6ab877ce682c03d584fa8cae1e88d9ab290febee705b211d5033c885b3d83bce8ab90917c540c9f5367592fbeabc8125e7a75866cab4b99e1c030a6a31b").unwrap();
-        let recovered = daosign_eip712::recover(
-            &domain(),
-            &message, 
-            &signature
-        );
+        let recovered = daosign_eip712::recover(&domain(), &message, &signature);
         println!("recovered: {:?}", recovered);
         assert_eq!(SOME_ADDR, recovered.unwrap())
     }

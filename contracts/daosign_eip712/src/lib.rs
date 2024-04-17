@@ -1,5 +1,5 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::{near_bindgen};
+use near_sdk::near_bindgen;
 use secp256k1::PublicKey;
 use serde::{Deserialize, Serialize};
 use sp_io::crypto::secp256k1_ecdsa_recover_compressed;
