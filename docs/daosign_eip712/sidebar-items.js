@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["CONTRACT_SOURCE_METADATA"],"fn":["eip712_domain_type","hash","recover","sha3"],"struct":["EIP712Domain","EIP712DomainExt","EIP712Message","EIP712PropertyType"],"trait":["Packable"]};

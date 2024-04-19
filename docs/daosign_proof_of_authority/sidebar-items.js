@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["CONTRACT_SOURCE_METADATA"],"fn":["proof_of_authority_type","signer_type"],"struct":["ProofOfAuthority","ProofOfAuthorityExt","Signer"]};

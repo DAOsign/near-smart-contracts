@@ -31,6 +31,12 @@ cargo near deploy <account-id>
 cargo fmt
 ```
 
+## Docs
+
+```bash
+sudo chmod +x ./gen-docs.sh && ./gen-docs.sh
+```
+
 ## Useful Links
 
 - [cargo-near](https://github.com/near/cargo-near) - NEAR smart contract development toolkit for Rust
