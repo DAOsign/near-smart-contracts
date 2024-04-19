@@ -1,8 +1,10 @@
+use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
+use k256::PublicKey as KPublicKey;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::log;
 use near_sdk::near_bindgen;
-use secp256k1::PublicKey;
 use serde::{Deserialize, Serialize};
-use sp_io::crypto::secp256k1_ecdsa_recover_compressed;
+use sha3::{Digest, Keccak256};
 use std::collections::HashMap;
 use std::io::Error;
 use tiny_keccak::{Hasher, Keccak};
@@ -69,18 +71,18 @@ pub fn recover(
     msg.extend_from_slice(&hash(message));
 
     let output: [u8; 20];
+    let sig = Signature::try_from(&signature[0..64]).expect("Signature must be valid here");
+    let recid = RecoveryId::try_from(signature[64] - 27).expect("RecoveryId must be valid here");
 
-    if let Ok(compressed_public_key) = secp256k1_ecdsa_recover_compressed(&signature, &sha3(&msg)) {
-        // Recover the public key from the signature
-        let pk = PublicKey::from_slice(compressed_public_key.as_ref()).unwrap();
-        let uncompressed = pk.serialize_uncompressed();
+    let compressed_public_key =
+        VerifyingKey::recover_from_digest(Keccak256::new_with_prefix(msg), &sig, recid)
+            .expect("VerifyingKey must be valid here");
+    let binding = compressed_public_key.to_encoded_point(false);
+    let uncompressed = binding.as_bytes();
 
-        // Convert public key to Ethereum address
-        let hash = keccak_hash_bytes(&uncompressed[1..]);
-        output = (&hash[12..]).try_into().unwrap();
-    } else {
-        panic!("Recovery failed!");
-    }
+    // Convert public key to Ethereum address
+    let hash = keccak_hash_bytes(&uncompressed[1..]);
+    output = (&hash[12..]).try_into().unwrap();
 
     Ok(output)
 }
@@ -161,5 +163,23 @@ mod tests {
         )
         .expect("bad hash value");
         assert_eq!(expected, struct_hash);
+    }
+
+    #[test]
+    fn check_recover() {
+        let message = domain();
+        const SOME_ADDR: [u8; 20] = [
+            173, 197, 148, 191, 124, 136, 93, 22, 39, 80, 161, 16, 56, 34, 234, 242, 15, 46, 8, 25,
+        ];
+        let expected_hash = [
+            83, 155, 141, 26, 73, 211, 225, 223, 92, 209, 236, 45, 230, 210, 40, 236, 55, 97, 180,
+            118, 175, 115, 18, 79, 195, 118, 209, 139, 25, 91, 31, 39,
+        ];
+        assert_eq!(expected_hash, hash(&message));
+
+        let signature = <[u8; 65]>::from_hex("b2e9a6c6ab877ce682c03d584fa8cae1e88d9ab290febee705b211d5033c885b3d83bce8ab90917c540c9f5367592fbeabc8125e7a75866cab4b99e1c030a6a31b").unwrap();
+        let recovered = recover(&domain(), &message, &signature);
+
+        assert_eq!(SOME_ADDR, recovered.unwrap())
     }
 }
