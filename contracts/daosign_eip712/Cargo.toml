@@ -24,7 +24,7 @@ features = ["js"]
 [dev-dependencies]
 near-sdk = { version = "5.0.0", features = ["unit-testing"] }
 near-workspaces = { version = "0.10.0", features = ["unstable"] }
-hex = { version = "0.4", default-features = false }
+hex = { workspace = true }
 
 [profile.release]
 codegen-units = 1

@@ -1,7 +1,5 @@
 use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
-use k256::PublicKey as KPublicKey;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::log;
 use near_sdk::near_bindgen;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
@@ -70,10 +68,11 @@ pub fn recover(
     msg.extend_from_slice(&hash(domain));
     msg.extend_from_slice(&hash(message));
 
-    let output: [u8; 20];
+    // Parse signature to (R, S) = sig, and (V) = recid
     let sig = Signature::try_from(&signature[0..64]).expect("Signature must be valid here");
     let recid = RecoveryId::try_from(signature[64] - 27).expect("RecoveryId must be valid here");
 
+    // Recover public key from signature
     let compressed_public_key =
         VerifyingKey::recover_from_digest(Keccak256::new_with_prefix(msg), &sig, recid)
             .expect("VerifyingKey must be valid here");
@@ -82,7 +81,7 @@ pub fn recover(
 
     // Convert public key to Ethereum address
     let hash = keccak_hash_bytes(&uncompressed[1..]);
-    output = (&hash[12..]).try_into().unwrap();
+    let output = (&hash[12..]).try_into().unwrap();
 
     Ok(output)
 }
