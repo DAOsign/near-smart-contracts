@@ -9,13 +9,23 @@ mod daosign_app {
     use daosign_proof_of_authority::ProofOfAuthority;
     use daosign_proof_of_signature::ProofOfSignature;
 
+    use schemars::JsonSchema;
+
     //
     // structs definition
     //
 
     /// Represents a signed Proof-of-Authority with the message, signature, and proof CID.
     #[derive(
-        BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq,
+        BorshDeserialize,
+        BorshSerialize,
+        Serialize,
+        Deserialize,
+        Debug,
+        Clone,
+        PartialEq,
+        Eq,
+        JsonSchema,
     )]
     pub struct SignedProofOfAuthority {
         message: ProofOfAuthority,
@@ -25,7 +35,15 @@ mod daosign_app {
 
     /// Represents a signed Proof-of-Signature with the message, signature, and proof CID.
     #[derive(
-        BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq,
+        BorshDeserialize,
+        BorshSerialize,
+        Serialize,
+        Deserialize,
+        Debug,
+        Clone,
+        PartialEq,
+        Eq,
+        JsonSchema,
     )]
     pub struct SignedProofOfSignature {
         message: ProofOfSignature,
@@ -35,7 +53,15 @@ mod daosign_app {
 
     /// Represents a signed Proof-of-Agreement with the message, signature, and proof CID.
     #[derive(
-        BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq,
+        BorshDeserialize,
+        BorshSerialize,
+        Serialize,
+        Deserialize,
+        Debug,
+        Clone,
+        PartialEq,
+        Eq,
+        JsonSchema,
     )]
     pub struct SignedProofOfAgreement {
         message: ProofOfAgreement,
@@ -59,6 +85,24 @@ mod daosign_app {
         poags: HashMap<String, SignedProofOfAgreement>,
         proof2signer: HashMap<String, [u8; 20]>,
         poau_signers_idx: HashMap<(String, [u8; 20]), u32>,
+    }
+
+    impl Default for DAOSignApp {
+        fn default() -> Self {
+            Self {
+                domain: EIP712Domain {
+                    name: "".to_string(),
+                    version: "".to_string(),
+                    chain_id: 0,
+                    verifying_contract: [0; 20],
+                },
+                poaus: HashMap::new(),
+                posis: HashMap::new(),
+                poags: HashMap::new(),
+                proof2signer: HashMap::new(),
+                poau_signers_idx: HashMap::new(),
+            }
+        }
     }
 
     #[near_bindgen]

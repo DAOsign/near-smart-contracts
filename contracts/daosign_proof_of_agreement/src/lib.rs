@@ -2,9 +2,11 @@ use daosign_eip712::{
     eip712_domain_type, sha3, EIP712Domain, EIP712Message, EIP712PropertyType, Packable,
 };
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::near_bindgen;
+// use near_sdk::near_bindgen;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+use schemars::JsonSchema;
 
 static PROOF_OF_AGREEMENT_TYPEHASH: [u8; 32] = [
     185, 27, 12, 51, 75, 214, 207, 181, 70, 113, 59, 190, 184, 233, 248, 119, 28, 64, 225, 24, 110,
@@ -33,8 +35,18 @@ fn proof_of_agreement_type() -> Vec<EIP712PropertyType> {
 }
 
 /// ProofOfAgreement struct representing the Proof-of-Agreement parameters.
-#[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+// #[near_bindgen]
+#[derive(
+    BorshDeserialize,
+    BorshSerialize,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    JsonSchema,
+)]
 pub struct ProofOfAgreement {
     pub authority_cid: String,
     pub signature_cids: Vec<String>,

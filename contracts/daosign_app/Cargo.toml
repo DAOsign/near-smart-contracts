@@ -17,6 +17,7 @@ daosign_eip712 = { path = "../daosign_eip712" }
 daosign_proof_of_agreement = { path = "../daosign_proof_of_agreement" }
 daosign_proof_of_authority = { path = "../daosign_proof_of_authority" }
 daosign_proof_of_signature = { path = "../daosign_proof_of_signature" }
+schemars = "0.8.16"
 
 [dev-dependencies]
 near-sdk = { version = "5.0.0", features = ["unit-testing"] }

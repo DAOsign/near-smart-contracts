@@ -1,6 +1,7 @@
 use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
-use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::near_bindgen;
+use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
+
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 use std::collections::HashMap;
@@ -23,8 +24,18 @@ pub struct EIP712PropertyType {
     pub r#type: String,
 }
 
-#[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+// #[near_bindgen]
+#[derive(
+    BorshDeserialize,
+    BorshSerialize,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    JsonSchema,
+)]
 pub struct EIP712Domain {
     pub name: String,
     pub version: String,

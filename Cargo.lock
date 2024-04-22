@@ -883,6 +883,7 @@ dependencies = [
  "near-sdk",
  "near-workspaces",
  "parity-scale-codec",
+ "schemars",
  "serde",
  "serde_json",
  "tokio",
@@ -900,6 +901,7 @@ dependencies = [
  "near-sdk",
  "near-workspaces",
  "parity-scale-codec",
+ "schemars",
  "serde",
  "sha3",
  "tiny-keccak",
@@ -914,6 +916,7 @@ dependencies = [
  "daosign_eip712",
  "hex",
  "near-sdk",
+ "schemars",
  "serde",
 ]
 
@@ -926,6 +929,7 @@ dependencies = [
  "daosign_eip712",
  "hex",
  "near-sdk",
+ "schemars",
  "serde",
 ]
 
@@ -938,6 +942,7 @@ dependencies = [
  "daosign_eip712",
  "hex",
  "near-sdk",
+ "schemars",
  "serde",
 ]
 

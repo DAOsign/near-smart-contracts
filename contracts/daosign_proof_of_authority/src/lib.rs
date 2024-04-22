@@ -2,7 +2,8 @@ use daosign_eip712::{
     eip712_domain_type, hash, sha3, EIP712Domain, EIP712Message, EIP712PropertyType, Packable,
 };
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::near_bindgen;
+// use near_sdk::near_bindgen;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -29,7 +30,17 @@ pub fn signer_type() -> Vec<EIP712PropertyType> {
 }
 
 /// Signer struct representing an address and associated metadata.
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(
+    BorshDeserialize,
+    BorshSerialize,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    JsonSchema,
+)]
 pub struct Signer {
     pub addr: [u8; 20],
     pub metadata: String,
@@ -76,8 +87,18 @@ pub fn proof_of_authority_type() -> Vec<EIP712PropertyType> {
 }
 
 /// ProofOfAuthority struct representing the Proof-of-Authority parameters.
-#[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+// #[near_bindgen]
+#[derive(
+    BorshDeserialize,
+    BorshSerialize,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    JsonSchema,
+)]
 pub struct ProofOfAuthority {
     pub name: String,
     pub from: [u8; 20],

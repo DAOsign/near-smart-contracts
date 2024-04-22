@@ -2,9 +2,11 @@ use daosign_eip712::{
     eip712_domain_type, sha3, EIP712Domain, EIP712Message, EIP712PropertyType, Packable,
 };
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::near_bindgen;
+// use near_sdk::near_bindgen;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+use schemars::JsonSchema;
 
 static PROOF_OF_SIGNATURE_TYPEHASH: [u8; 32] = [
     121, 27, 217, 70, 217, 77, 222, 106, 102, 69, 3, 201, 6, 50, 65, 200, 192, 203, 113, 79, 199,
@@ -37,8 +39,18 @@ fn proof_of_signature_type() -> Vec<EIP712PropertyType> {
 }
 
 /// ProofOfSignature struct representing the Proof-of-Signature parameters.
-#[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+// #[near_bindgen]
+#[derive(
+    BorshDeserialize,
+    BorshSerialize,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    JsonSchema,
+)]
 pub struct ProofOfSignature {
     pub name: String,
     pub signer: [u8; 20],

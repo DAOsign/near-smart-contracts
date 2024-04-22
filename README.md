@@ -28,6 +28,8 @@ near account create-account sponsor-by-faucet-service <my-new-dev-account>.testn
 near contract deploy <my-new-dev-account>.testnet use-file <route_to_wasm> without-init-call network-config testnet sign-with-keychain
 ```
 
+near contract deploy misha-near.testnet use-file target/wasm32-unknown-unknown/release/daosign_app.wasm without-init-call network-config testnet sign-with-keychain
+
 ```bash
 cargo near deploy <account-id>
 ```
