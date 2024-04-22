@@ -4,8 +4,7 @@ use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
-use std::collections::HashMap;
-use std::io::Error;
+use std::{collections::HashMap, io::Error};
 use tiny_keccak::{Hasher, Keccak};
 
 static EIP712DOMAIN_TYPEHASH: [u8; 32] = [

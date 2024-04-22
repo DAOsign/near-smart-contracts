@@ -33,8 +33,15 @@ cargo near deploy <account-id>
 
 ## Lint
 
+(optional)
+
 ```bash
-cargo fmt
+rustup default nightly
+```
+
+Linting
+```bash
+cargo +nightly fmt
 ```
 
 ## Docs

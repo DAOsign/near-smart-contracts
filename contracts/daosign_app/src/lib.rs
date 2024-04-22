@@ -1,6 +1,8 @@
 mod daosign_app {
-    use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-    use near_sdk::{log, near_bindgen};
+    use near_sdk::{
+        borsh::{self, BorshDeserialize, BorshSerialize},
+        log, near_bindgen,
+    };
     use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
 
@@ -11,7 +13,6 @@ mod daosign_app {
 
     use schemars::JsonSchema;
 
-    //
     // structs definition
     //
 
@@ -69,7 +70,6 @@ mod daosign_app {
         proof_cid: String,
     }
 
-    //
     // DAOsignApp contract
     //
 
@@ -409,8 +409,7 @@ mod daosign_app {
 
         use daosign_eip712::EIP712Domain;
         use daosign_proof_of_agreement::ProofOfAgreement;
-        use daosign_proof_of_authority::ProofOfAuthority;
-        use daosign_proof_of_authority::Signer;
+        use daosign_proof_of_authority::{ProofOfAuthority, Signer};
         use daosign_proof_of_signature::ProofOfSignature;
 
         fn store_proof_of_authority(instance: &mut DAOSignApp) {
