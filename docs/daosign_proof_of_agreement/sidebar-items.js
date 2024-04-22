@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["CONTRACT_SOURCE_METADATA"],"struct":["ProofOfAgreement","ProofOfAgreementExt"]};
+window.SIDEBAR_ITEMS = {"struct":["ProofOfAgreement"]};
