@@ -18,17 +18,14 @@ cargo test
 
 ## How to Deploy?
 
-Deployment is automated with GitHub Actions CI/CD pipeline.
-To deploy manually, install [`cargo-near`](https://github.com/near/cargo-near) and run:
+Deployment of the `daosign_app` contract to the test network:
 
 ```bash
 # Automatically deploy the wasm in a new account
 near account create-account sponsor-by-faucet-service <my-new-dev-account>.testnet autogenerate-new-keypair save-to-keychain network-config testnet create
 
-near contract deploy <my-new-dev-account>.testnet use-file <route_to_wasm> without-init-call network-config testnet sign-with-keychain
+near contract deploy <my-new-dev-account>.testnet use-file target/wasm32-unknown-unknown/release/daosign_app.wasm without-init-call network-config testnet sign-with-keychain
 ```
-
-near contract deploy misha-near.testnet use-file target/wasm32-unknown-unknown/release/daosign_app.wasm without-init-call network-config testnet sign-with-keychain
 
 ```bash
 cargo near deploy <account-id>
