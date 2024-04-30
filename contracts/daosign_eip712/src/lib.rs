@@ -1,5 +1,7 @@
-use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
-use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
+// use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
+use secp256k1::{Secp256k1, ecdsa::{RecoverableSignature, RecoveryId}, Message};
+
+use near_sdk::{borsh::{BorshDeserialize, BorshSerialize},log};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -71,29 +73,41 @@ pub fn hash(message: &dyn Packable) -> [u8; 32] {
 pub fn recover(
     domain: &EIP712Domain,
     message: &dyn Packable,
-    signature: &[u8; 65],
+    signature_bytes: &[u8; 65],
 ) -> Result<[u8; 20], Error> {
+    let context = Secp256k1::new();
+
+    // Extract the signature and the recovery ID
+    let recovery_id = RecoveryId::from_i32((signature_bytes[64] - 27) as i32);
+    let recoverable_sig = RecoverableSignature::from_compact(
+        &signature_bytes[0..64],
+        recovery_id.unwrap()
+    ).unwrap();
+
+    // Create a message hash (this is just a placeholder, use the correct hash function!)
     let mut msg = Vec::new();
     msg.extend_from_slice(b"\x19\x01");
     msg.extend_from_slice(&hash(domain));
     msg.extend_from_slice(&hash(message));
 
-    // Parse signature to (R, S) = sig, and (V) = recid
-    let sig = Signature::try_from(&signature[0..64]).expect("Signature must be valid here");
-    let recid = RecoveryId::try_from(signature[64] - 27).expect("RecoveryId must be valid here");
+    let mut hasher = Keccak256::new();
+    hasher.update(&msg);
+    let message_hash = hasher.finalize();
+    
+    let secp_message = Message::from_slice(&message_hash).unwrap();
 
-    // Recover public key from signature
-    let compressed_public_key =
-        VerifyingKey::recover_from_digest(Keccak256::new_with_prefix(msg), &sig, recid)
-            .expect("VerifyingKey must be valid here");
-    let binding = compressed_public_key.to_encoded_point(false);
-    let uncompressed = binding.as_bytes();
+    // Recover the public key
+    let public_key = context.recover_ecdsa(&secp_message, &recoverable_sig).unwrap();
+    log!("public_key: {:?}", public_key);
 
-    // Convert public key to Ethereum address
-    let hash = keccak_hash_bytes(&uncompressed[1..]);
-    let output = (&hash[12..]).try_into().unwrap();
+    // Serialize the public key and compute the Ethereum-style address
+    let serialized_pubkey = public_key.serialize_uncompressed(); // or serialize_compressed()
+    log!("serialized_pubkey: {:?}", serialized_pubkey);
+    
+    let eth_address = keccak_hash_bytes(&serialized_pubkey[1..]); // skip the prefix byte
 
-    Ok(output)
+    // Return the last 20 bytes as the address
+    Ok(eth_address[12..32].try_into().unwrap())
 }
 
 /// # Helper function to get Keccak-256 hash of any given array of bytes.
@@ -188,6 +202,7 @@ mod tests {
 
         let signature = <[u8; 65]>::from_hex("b2e9a6c6ab877ce682c03d584fa8cae1e88d9ab290febee705b211d5033c885b3d83bce8ab90917c540c9f5367592fbeabc8125e7a75866cab4b99e1c030a6a31b").unwrap();
         let recovered = recover(&domain(), &message, &signature);
+        println!("recovered: {:?}", recovered);
 
         assert_eq!(SOME_ADDR, recovered.unwrap())
     }
