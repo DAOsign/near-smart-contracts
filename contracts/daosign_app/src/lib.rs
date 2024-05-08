@@ -135,6 +135,10 @@ mod daosign_app {
             }
         }
 
+        pub fn get_domain(&self) -> EIP712Domain {
+            self.domain.clone()
+        }
+
         /// # Message to store a Proof of Authority.
         ///
         /// This function stores a Proof of Authority along with its signature and validates the signature and message.

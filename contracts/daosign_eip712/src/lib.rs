@@ -1,9 +1,5 @@
 use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
-// use secp256k1::{Secp256k1, ecdsa::{RecoverableSignature, RecoveryId}, Message};
-use near_sdk::{
-    borsh::{BorshDeserialize, BorshSerialize},
-    near_bindgen,
-};
+use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -16,19 +12,18 @@ static EIP712DOMAIN_TYPEHASH: [u8; 32] = [
     155, 15, 250, 202, 169, 167, 93, 82, 43, 57, 64, 15,
 ];
 
-// /// EIP712PropertyType struct representing the structure of EIP-712 properties.
-// #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-// pub struct EIP712PropertyType {
-//     pub name: String,
-//     pub r#type: String,
-// }
-
 pub trait Packable {
     fn pack(&self) -> Vec<u8>;
-    fn get_greeting(&self) -> String;
 }
 
-#[near_bindgen]
+/// EIP712PropertyType struct representing the structure of EIP-712 properties.
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct EIP712PropertyType {
+    pub name: String,
+    pub r#type: String,
+}
+
+// #[near_bindgen]
 #[derive(
     BorshDeserialize,
     BorshSerialize,
@@ -41,31 +36,13 @@ pub trait Packable {
     JsonSchema,
 )]
 pub struct EIP712Domain {
-    greeting: String,
     pub name: String,
     pub version: String,
     pub chain_id: u64,
     pub verifying_contract: [u8; 20],
 }
 
-impl Default for EIP712Domain {
-    fn default() -> Self {
-        Self {
-            greeting: "Hello from EIP712Domain 2".to_string(),
-            name: String::from(""),
-            version: String::from(""),
-            chain_id: 0,
-            verifying_contract: <[u8; 20]>::default(),
-        }
-    }
-}
-
-#[near_bindgen]
 impl Packable for EIP712Domain {
-    fn get_greeting(&self) -> String {
-        self.greeting.clone()
-    }
-
     fn pack(&self) -> Vec<u8> {
         let mut encoded: Vec<u8> = Vec::new();
         encoded.extend_from_slice(&EIP712DOMAIN_TYPEHASH.clone());
@@ -119,17 +96,17 @@ pub fn recover(
     Ok(output)
 }
 
-// # Helper function to get Keccak-256 hash of any given array of bytes.
-//
-// This function takes an array of bytes as input and calculates its Keccak-256 hash.
-//
-// # Arguments
-//
-// * `input` - Array of bytes to be hashed.
-//
-// # Returns
-//
-// A 32-byte array representing the Keccak-256 hash of the input array of bytes.
+/// # Helper function to get Keccak-256 hash of any given array of bytes.
+///
+/// This function takes an array of bytes as input and calculates its Keccak-256 hash.
+///
+/// # Arguments
+///
+/// * `input` - Array of bytes to be hashed.
+///
+/// # Returns
+///
+/// A 32-byte array representing the Keccak-256 hash of the input array of bytes.
 fn keccak_hash_bytes(input: &[u8]) -> [u8; 32] {
     let mut keccak = Keccak::v256();
     let mut output = [0u8; 32];
@@ -138,34 +115,34 @@ fn keccak_hash_bytes(input: &[u8]) -> [u8; 32] {
     output
 }
 
-// #[derive(Debug, Clone, PartialEq, Eq)]
-// pub struct EIP712Message<T: Packable> {
-//     pub types: HashMap<String, Vec<EIP712PropertyType>>,
-//     pub domain: EIP712Domain,
-//     pub primary_type: String,
-//     pub message: T,
-// }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EIP712Message<T: Packable> {
+    pub types: HashMap<String, Vec<EIP712PropertyType>>,
+    pub domain: EIP712Domain,
+    pub primary_type: String,
+    pub message: T,
+}
 
-// pub fn eip712_domain_type() -> Vec<EIP712PropertyType> {
-//     vec![
-//         EIP712PropertyType {
-//             name: String::from("name"),
-//             r#type: String::from("string"),
-//         },
-//         EIP712PropertyType {
-//             name: String::from("version"),
-//             r#type: String::from("string"),
-//         },
-//         EIP712PropertyType {
-//             name: String::from("chainId"),
-//             r#type: String::from("uint256"),
-//         },
-//         EIP712PropertyType {
-//             name: String::from("verifyingContract"),
-//             r#type: String::from("address"),
-//         },
-//     ]
-// }
+pub fn eip712_domain_type() -> Vec<EIP712PropertyType> {
+    vec![
+        EIP712PropertyType {
+            name: String::from("name"),
+            r#type: String::from("string"),
+        },
+        EIP712PropertyType {
+            name: String::from("version"),
+            r#type: String::from("string"),
+        },
+        EIP712PropertyType {
+            name: String::from("chainId"),
+            r#type: String::from("uint256"),
+        },
+        EIP712PropertyType {
+            name: String::from("verifyingContract"),
+            r#type: String::from("address"),
+        },
+    ]
+}
 
 #[cfg(test)]
 mod tests {
@@ -174,7 +151,6 @@ mod tests {
 
     fn domain() -> EIP712Domain {
         EIP712Domain {
-            greeting: String::from("Hello from EIP712Domain"),
             name: String::from("daosign"),
             version: String::from("0.1.0"),
             chain_id: 1,

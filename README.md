@@ -18,18 +18,19 @@ cargo test
 
 ## How to Deploy?
 
+### Prerequisites
+
+```bash
+chmod +x ./scripts/*
+```
+
+### Deployment
 Deployment of the `daosign_app` contract to the test network:
 
-```bash
-# Automatically deploy the wasm in a new account
-near account create-account sponsor-by-faucet-service <my-new-dev-account>.testnet autogenerate-new-keypair save-to-keychain network-config testnet create
-
-near contract deploy <my-new-dev-account>.testnet use-file target/wasm32-unknown-unknown/release/daosign_app.wasm without-init-call network-config testnet sign-with-keychain
-```
-
-```bash
-cargo near deploy <account-id>
-```
+1. Run `./scripts/build.sh`.
+2. Run `./scripts/random-acc.sh` and paste the generated account id to the `dev.env` file after `DEPLOYER_ACCOUNT_ID=`.
+3. Run `./scripts/deploy.sh`.
+4. (optional) Test that deployment is successful by running `./scripts/get-domain.sh`. It should return DAOsignApp.domain object.
 
 ## Lint
 
