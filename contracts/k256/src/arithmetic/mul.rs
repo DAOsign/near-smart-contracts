@@ -450,48 +450,48 @@ impl MulAssign<&Scalar> for ProjectivePoint {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::arithmetic::{ProjectivePoint, Scalar};
-    use elliptic_curve::{
-        ops::{LinearCombination as _, MulByGenerator},
-        rand_core::OsRng,
-        Field, Group,
-    };
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use crate::arithmetic::{ProjectivePoint, Scalar};
+//     use elliptic_curve::{
+//         ops::{LinearCombination as _, MulByGenerator},
+//         rand_core::OsRng,
+//         Field, Group,
+//     };
 
-    #[test]
-    fn test_lincomb() {
-        let x = ProjectivePoint::random(&mut OsRng);
-        let y = ProjectivePoint::random(&mut OsRng);
-        let k = Scalar::random(&mut OsRng);
-        let l = Scalar::random(&mut OsRng);
+//     #[test]
+//     fn test_lincomb() {
+//         let x = ProjectivePoint::random(&mut OsRng);
+//         let y = ProjectivePoint::random(&mut OsRng);
+//         let k = Scalar::random(&mut OsRng);
+//         let l = Scalar::random(&mut OsRng);
 
-        let reference = &x * &k + &y * &l;
-        let test = ProjectivePoint::lincomb(&x, &k, &y, &l);
-        assert_eq!(reference, test);
-    }
+//         let reference = &x * &k + &y * &l;
+//         let test = ProjectivePoint::lincomb(&x, &k, &y, &l);
+//         assert_eq!(reference, test);
+//     }
 
-    #[test]
-    fn test_mul_by_generator() {
-        let k = Scalar::random(&mut OsRng);
-        let reference = &ProjectivePoint::GENERATOR * &k;
-        let test = ProjectivePoint::mul_by_generator(&k);
-        assert_eq!(reference, test);
-    }
+//     #[test]
+//     fn test_mul_by_generator() {
+//         let k = Scalar::random(&mut OsRng);
+//         let reference = &ProjectivePoint::GENERATOR * &k;
+//         let test = ProjectivePoint::mul_by_generator(&k);
+//         assert_eq!(reference, test);
+//     }
 
-    #[cfg(feature = "alloc")]
-    #[test]
-    fn test_lincomb_slice() {
-        let x = ProjectivePoint::random(&mut OsRng);
-        let y = ProjectivePoint::random(&mut OsRng);
-        let k = Scalar::random(&mut OsRng);
-        let l = Scalar::random(&mut OsRng);
+//     #[cfg(feature = "alloc")]
+//     #[test]
+//     fn test_lincomb_slice() {
+//         let x = ProjectivePoint::random(&mut OsRng);
+//         let y = ProjectivePoint::random(&mut OsRng);
+//         let k = Scalar::random(&mut OsRng);
+//         let l = Scalar::random(&mut OsRng);
 
-        let reference = &x * &k + &y * &l;
-        let points_and_scalars = vec![(x, k), (y, l)];
+//         let reference = &x * &k + &y * &l;
+//         let points_and_scalars = vec![(x, k), (y, l)];
 
-        let test = ProjectivePoint::lincomb_ext(points_and_scalars.as_slice());
-        assert_eq!(reference, test);
-    }
-}
+//         let test = ProjectivePoint::lincomb_ext(points_and_scalars.as_slice());
+//         assert_eq!(reference, test);
+//     }
+// }

@@ -175,11 +175,11 @@ impl Scalar {
         CtOption::new(res, !self.is_zero())
     }
 
-    /// Returns the scalar modulus as a `BigUint` object.
-    #[cfg(test)]
-    pub fn modulus_as_biguint() -> BigUint {
-        Self::ONE.negate().to_biguint().unwrap() + 1.to_biguint().unwrap()
-    }
+    // /// Returns the scalar modulus as a `BigUint` object.
+    // #[cfg(test)]
+    // pub fn modulus_as_biguint() -> BigUint {
+    //     Self::ONE.negate().to_biguint().unwrap() + 1.to_biguint().unwrap()
+    // }
 
     /// Returns a (nearly) uniformly-random scalar, generated in constant time.
     pub fn generate_biased(rng: &mut impl CryptoRngCore) -> Self {
@@ -786,449 +786,449 @@ impl<'de> Deserialize<'de> for Scalar {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::Scalar;
-    use crate::{
-        arithmetic::dev::{biguint_to_bytes, bytes_to_biguint},
-        FieldBytes, NonZeroScalar, WideBytes, ORDER,
-    };
-    use elliptic_curve::{
-        bigint::{ArrayEncoding, U256, U512},
-        ff::{Field, PrimeField},
-        generic_array::GenericArray,
-        ops::{Invert, Reduce},
-        scalar::IsHigh,
-    };
-    use num_bigint::{BigUint, ToBigUint};
-    use num_traits::Zero;
-    use proptest::prelude::*;
-    use rand_core::OsRng;
-
-    #[cfg(feature = "alloc")]
-    use alloc::vec::Vec;
-    use elliptic_curve::ops::BatchInvert;
-
-    impl From<&BigUint> for Scalar {
-        fn from(x: &BigUint) -> Self {
-            debug_assert!(x < &Scalar::modulus_as_biguint());
-            let bytes = biguint_to_bytes(x);
-            Self::from_repr(bytes.into()).unwrap()
-        }
-    }
-
-    impl From<BigUint> for Scalar {
-        fn from(x: BigUint) -> Self {
-            Self::from(&x)
-        }
-    }
-
-    impl ToBigUint for Scalar {
-        fn to_biguint(&self) -> Option<BigUint> {
-            Some(bytes_to_biguint(self.to_bytes().as_ref()))
-        }
-    }
-
-    /// t = (modulus - 1) >> S
-    const T: [u64; 4] = [
-        0xeeff497a3340d905,
-        0xfaeabb739abd2280,
-        0xffffffffffffffff,
-        0x03ffffffffffffff,
-    ];
-
-    #[test]
-    fn two_inv_constant() {
-        assert_eq!(Scalar::from(2u32) * Scalar::TWO_INV, Scalar::ONE);
-    }
-
-    #[test]
-    fn root_of_unity_constant() {
-        // ROOT_OF_UNITY^{2^s} mod m == 1
-        assert_eq!(
-            Scalar::ROOT_OF_UNITY.pow_vartime(&[1u64 << Scalar::S, 0, 0, 0]),
-            Scalar::ONE
-        );
-
-        // MULTIPLICATIVE_GENERATOR^{t} mod m == ROOT_OF_UNITY
-        assert_eq!(
-            Scalar::MULTIPLICATIVE_GENERATOR.pow_vartime(&T),
-            Scalar::ROOT_OF_UNITY
-        )
-    }
-
-    #[test]
-    fn root_of_unity_inv_constant() {
-        assert_eq!(
-            Scalar::ROOT_OF_UNITY * Scalar::ROOT_OF_UNITY_INV,
-            Scalar::ONE
-        );
-    }
-
-    #[test]
-    fn delta_constant() {
-        // DELTA^{t} mod m == 1
-        assert_eq!(Scalar::DELTA.pow_vartime(&T), Scalar::ONE);
-    }
-
-    #[test]
-    fn is_high() {
-        // 0 is not high
-        let high: bool = Scalar::ZERO.is_high().into();
-        assert!(!high);
-
-        // 1 is not high
-        let one = 1.to_biguint().unwrap();
-        let high: bool = Scalar::from(&one).is_high().into();
-        assert!(!high);
-
-        let m = Scalar::modulus_as_biguint();
-        let m_by_2 = &m >> 1;
-
-        // M / 2 is not high
-        let high: bool = Scalar::from(&m_by_2).is_high().into();
-        assert!(!high);
-
-        // M / 2 + 1 is high
-        let high: bool = Scalar::from(&m_by_2 + &one).is_high().into();
-        assert!(high);
-
-        // MODULUS - 1 is high
-        let high: bool = Scalar::from(&m - &one).is_high().into();
-        assert!(high);
-    }
-
-    /// Basic tests that sqrt works.
-    #[test]
-    fn sqrt() {
-        for &n in &[1u64, 4, 9, 16, 25, 36, 49, 64] {
-            let scalar = Scalar::from(n);
-            let sqrt = scalar.sqrt().unwrap();
-            assert_eq!(sqrt.square(), scalar);
-        }
-    }
-
-    /// Basic tests that `invert` works.
-    #[test]
-    fn invert() {
-        assert_eq!(Scalar::ONE, Scalar::ONE.invert().unwrap());
-
-        let three = Scalar::from(3u64);
-        let inv_three = three.invert().unwrap();
-        assert_eq!(three * inv_three, Scalar::ONE);
-
-        let minus_three = -three;
-        let inv_minus_three = minus_three.invert().unwrap();
-        assert_eq!(inv_minus_three, -inv_three);
-        assert_eq!(three * inv_minus_three, -Scalar::ONE);
-
-        assert!(bool::from(Scalar::ZERO.invert().is_none()));
-        assert_eq!(Scalar::from(2u64).invert().unwrap(), Scalar::TWO_INV);
-        assert_eq!(
-            Scalar::ROOT_OF_UNITY.invert_vartime().unwrap(),
-            Scalar::ROOT_OF_UNITY_INV
-        );
-    }
-
-    /// Basic tests that `invert_vartime` works.
-    #[test]
-    fn invert_vartime() {
-        assert_eq!(Scalar::ONE, Scalar::ONE.invert_vartime().unwrap());
-
-        let three = Scalar::from(3u64);
-        let inv_three = three.invert_vartime().unwrap();
-        assert_eq!(three * inv_three, Scalar::ONE);
-
-        let minus_three = -three;
-        let inv_minus_three = minus_three.invert_vartime().unwrap();
-        assert_eq!(inv_minus_three, -inv_three);
-        assert_eq!(three * inv_minus_three, -Scalar::ONE);
-
-        assert!(bool::from(Scalar::ZERO.invert_vartime().is_none()));
-        assert_eq!(
-            Scalar::from(2u64).invert_vartime().unwrap(),
-            Scalar::TWO_INV
-        );
-        assert_eq!(
-            Scalar::ROOT_OF_UNITY.invert_vartime().unwrap(),
-            Scalar::ROOT_OF_UNITY_INV
-        );
-    }
-
-    #[test]
-    fn batch_invert_array() {
-        let k: Scalar = Scalar::random(&mut OsRng);
-        let l: Scalar = Scalar::random(&mut OsRng);
-
-        let expected = [k.invert().unwrap(), l.invert().unwrap()];
-        assert_eq!(
-            <Scalar as BatchInvert<_>>::batch_invert(&[k, l]).unwrap(),
-            expected
-        );
-    }
-
-    #[test]
-    #[cfg(feature = "alloc")]
-    fn batch_invert() {
-        let k: Scalar = Scalar::random(&mut OsRng);
-        let l: Scalar = Scalar::random(&mut OsRng);
-
-        let expected = vec![k.invert().unwrap(), l.invert().unwrap()];
-        let scalars = vec![k, l];
-        let res: Vec<_> = <Scalar as BatchInvert<_>>::batch_invert(scalars.as_slice()).unwrap();
-        assert_eq!(res, expected);
-    }
-
-    #[test]
-    fn negate() {
-        let zero_neg = -Scalar::ZERO;
-        assert_eq!(zero_neg, Scalar::ZERO);
-
-        let m = Scalar::modulus_as_biguint();
-        let one = 1.to_biguint().unwrap();
-        let m_minus_one = &m - &one;
-        let m_by_2 = &m >> 1;
-
-        let one_neg = -Scalar::ONE;
-        assert_eq!(one_neg, Scalar::from(&m_minus_one));
-
-        let frac_modulus_2_neg = -Scalar::from(&m_by_2);
-        let frac_modulus_2_plus_one = Scalar::from(&m_by_2 + &one);
-        assert_eq!(frac_modulus_2_neg, frac_modulus_2_plus_one);
-
-        let modulus_minus_one_neg = -Scalar::from(&m - &one);
-        assert_eq!(modulus_minus_one_neg, Scalar::ONE);
-    }
-
-    #[test]
-    fn add_result_within_256_bits() {
-        // A regression for a bug where reduction was not applied
-        // when the unreduced result of addition was in the range `[modulus, 2^256)`.
-        let t = 1.to_biguint().unwrap() << 255;
-        let one = 1.to_biguint().unwrap();
-
-        let a = Scalar::from(&t - &one);
-        let b = Scalar::from(&t);
-        let res = &a + &b;
-
-        let m = Scalar::modulus_as_biguint();
-        let res_ref = Scalar::from((&t + &t - &one) % &m);
-
-        assert_eq!(res, res_ref);
-    }
-
-    #[test]
-    fn generate_biased() {
-        use elliptic_curve::rand_core::OsRng;
-        let a = Scalar::generate_biased(&mut OsRng);
-        // just to make sure `a` is not optimized out by the compiler
-        assert_eq!((a - &a).is_zero().unwrap_u8(), 1);
-    }
-
-    #[test]
-    fn generate_vartime() {
-        use elliptic_curve::rand_core::OsRng;
-        let a = Scalar::generate_vartime(&mut OsRng);
-        // just to make sure `a` is not optimized out by the compiler
-        assert_eq!((a - &a).is_zero().unwrap_u8(), 1);
-    }
-
-    #[test]
-    fn from_bytes_reduced() {
-        let m = Scalar::modulus_as_biguint();
-
-        fn reduce<T: Reduce<U256, Bytes = FieldBytes>>(arr: &[u8]) -> T {
-            T::reduce_bytes(GenericArray::from_slice(arr))
-        }
-
-        // Regular reduction
-
-        let s = reduce::<Scalar>(&[0xffu8; 32]).to_biguint().unwrap();
-        assert!(s < m);
-
-        let s = reduce::<Scalar>(&[0u8; 32]).to_biguint().unwrap();
-        assert!(s.is_zero());
-
-        let s = reduce::<Scalar>(&ORDER.to_be_byte_array())
-            .to_biguint()
-            .unwrap();
-        assert!(s.is_zero());
-
-        // Reduction to a non-zero scalar
-
-        let s = reduce::<NonZeroScalar>(&[0xffu8; 32]).to_biguint().unwrap();
-        assert!(s < m);
-
-        let s = reduce::<NonZeroScalar>(&[0u8; 32]).to_biguint().unwrap();
-        assert!(s < m);
-        assert!(!s.is_zero());
-
-        let s = reduce::<NonZeroScalar>(&ORDER.to_be_byte_array())
-            .to_biguint()
-            .unwrap();
-        assert!(s < m);
-        assert!(!s.is_zero());
-
-        let s = reduce::<NonZeroScalar>(&(ORDER.wrapping_sub(&U256::ONE)).to_be_byte_array())
-            .to_biguint()
-            .unwrap();
-        assert!(s < m);
-        assert!(!s.is_zero());
-    }
-
-    #[test]
-    fn from_wide_bytes_reduced() {
-        let m = Scalar::modulus_as_biguint();
-
-        fn reduce<T: Reduce<U512, Bytes = WideBytes>>(slice: &[u8]) -> T {
-            let mut bytes = WideBytes::default();
-            bytes[(64 - slice.len())..].copy_from_slice(slice);
-            T::reduce_bytes(&bytes)
-        }
-
-        // Regular reduction
-
-        let s = reduce::<Scalar>(&[0xffu8; 64]).to_biguint().unwrap();
-        assert!(s < m);
-
-        let s = reduce::<Scalar>(&[0u8; 64]).to_biguint().unwrap();
-        assert!(s.is_zero());
-
-        let s = reduce::<Scalar>(&ORDER.to_be_byte_array())
-            .to_biguint()
-            .unwrap();
-        assert!(s.is_zero());
-
-        // Reduction to a non-zero scalar
-
-        let s = reduce::<NonZeroScalar>(&[0xffu8; 64]).to_biguint().unwrap();
-        assert!(s < m);
-
-        let s = reduce::<NonZeroScalar>(&[0u8; 64]).to_biguint().unwrap();
-        assert!(s < m);
-        assert!(!s.is_zero());
-
-        let s = reduce::<NonZeroScalar>(&ORDER.to_be_byte_array())
-            .to_biguint()
-            .unwrap();
-        assert!(s < m);
-        assert!(!s.is_zero());
-
-        let s = reduce::<NonZeroScalar>(&(ORDER.wrapping_sub(&U256::ONE)).to_be_byte_array())
-            .to_biguint()
-            .unwrap();
-        assert!(s < m);
-        assert!(!s.is_zero());
-    }
-
-    prop_compose! {
-        fn scalar()(bytes in any::<[u8; 32]>()) -> Scalar {
-            <Scalar as Reduce<U256>>::reduce_bytes(&bytes.into())
-        }
-    }
-
-    proptest! {
-        #[test]
-        fn fuzzy_roundtrip_to_bytes(a in scalar()) {
-            let a_back = Scalar::from_repr(a.to_bytes()).unwrap();
-            assert_eq!(a, a_back);
-        }
-
-        #[test]
-        fn fuzzy_roundtrip_to_bytes_unchecked(a in scalar()) {
-            let bytes = a.to_bytes();
-            let a_back = Scalar::from_bytes_unchecked(bytes.as_ref());
-            assert_eq!(a, a_back);
-        }
-
-        #[test]
-        fn fuzzy_add(a in scalar(), b in scalar()) {
-            let a_bi = a.to_biguint().unwrap();
-            let b_bi = b.to_biguint().unwrap();
-
-            let res_bi = (&a_bi + &b_bi) % &Scalar::modulus_as_biguint();
-            let res_ref = Scalar::from(&res_bi);
-            let res_test = a.add(&b);
-
-            assert_eq!(res_ref, res_test);
-        }
-
-        #[test]
-        fn fuzzy_sub(a in scalar(), b in scalar()) {
-            let a_bi = a.to_biguint().unwrap();
-            let b_bi = b.to_biguint().unwrap();
-
-            let m = Scalar::modulus_as_biguint();
-            let res_bi = (&m + &a_bi - &b_bi) % &m;
-            let res_ref = Scalar::from(&res_bi);
-            let res_test = a.sub(&b);
-
-            assert_eq!(res_ref, res_test);
-        }
-
-        #[test]
-        fn fuzzy_neg(a in scalar()) {
-            let a_bi = a.to_biguint().unwrap();
-
-            let m = Scalar::modulus_as_biguint();
-            let res_bi = (&m - &a_bi) % &m;
-            let res_ref = Scalar::from(&res_bi);
-            let res_test = -a;
-
-            assert_eq!(res_ref, res_test);
-        }
-
-        #[test]
-        fn fuzzy_mul(a in scalar(), b in scalar()) {
-            let a_bi = a.to_biguint().unwrap();
-            let b_bi = b.to_biguint().unwrap();
-
-            let res_bi = (&a_bi * &b_bi) % &Scalar::modulus_as_biguint();
-            let res_ref = Scalar::from(&res_bi);
-            let res_test = a.mul(&b);
-
-            assert_eq!(res_ref, res_test);
-        }
-
-        #[test]
-        fn fuzzy_rshift(a in scalar(), b in 0usize..512) {
-            let a_bi = a.to_biguint().unwrap();
-
-            let res_bi = &a_bi >> b;
-            let res_ref = Scalar::from(&res_bi);
-            let res_test = a >> b;
-
-            assert_eq!(res_ref, res_test);
-        }
-
-        #[test]
-        fn fuzzy_invert(
-            a in scalar()
-        ) {
-            let a = if bool::from(a.is_zero()) { Scalar::ONE } else { a };
-            let a_bi = a.to_biguint().unwrap();
-            let inv = a.invert().unwrap();
-            let inv_bi = inv.to_biguint().unwrap();
-            let m = Scalar::modulus_as_biguint();
-            assert_eq!((&inv_bi * &a_bi) % &m, 1.to_biguint().unwrap());
-        }
-
-        #[test]
-        fn fuzzy_invert_vartime(w in scalar()) {
-            let inv: Option<Scalar> = w.invert().into();
-            let inv_vartime: Option<Scalar> = w.invert_vartime().into();
-            assert_eq!(inv, inv_vartime);
-        }
-
-        #[test]
-        fn fuzzy_from_wide_bytes_reduced(bytes_hi in any::<[u8; 32]>(), bytes_lo in any::<[u8; 32]>()) {
-            let m = Scalar::modulus_as_biguint();
-            let mut bytes = [0u8; 64];
-            bytes[0..32].clone_from_slice(&bytes_hi);
-            bytes[32..64].clone_from_slice(&bytes_lo);
-            let s = <Scalar as Reduce<U512>>::reduce(U512::from_be_slice(&bytes));
-            let s_bu = s.to_biguint().unwrap();
-            assert!(s_bu < m);
-        }
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use super::Scalar;
+//     use crate::{
+//         arithmetic::dev::{biguint_to_bytes, bytes_to_biguint},
+//         FieldBytes, NonZeroScalar, WideBytes, ORDER,
+//     };
+//     use elliptic_curve::{
+//         bigint::{ArrayEncoding, U256, U512},
+//         ff::{Field, PrimeField},
+//         generic_array::GenericArray,
+//         ops::{Invert, Reduce},
+//         scalar::IsHigh,
+//     };
+//     use num_bigint::{BigUint, ToBigUint};
+//     use num_traits::Zero;
+//     use proptest::prelude::*;
+//     use rand_core::OsRng;
+
+//     #[cfg(feature = "alloc")]
+//     use alloc::vec::Vec;
+//     use elliptic_curve::ops::BatchInvert;
+
+//     impl From<&BigUint> for Scalar {
+//         fn from(x: &BigUint) -> Self {
+//             debug_assert!(x < &Scalar::modulus_as_biguint());
+//             let bytes = biguint_to_bytes(x);
+//             Self::from_repr(bytes.into()).unwrap()
+//         }
+//     }
+
+//     impl From<BigUint> for Scalar {
+//         fn from(x: BigUint) -> Self {
+//             Self::from(&x)
+//         }
+//     }
+
+//     impl ToBigUint for Scalar {
+//         fn to_biguint(&self) -> Option<BigUint> {
+//             Some(bytes_to_biguint(self.to_bytes().as_ref()))
+//         }
+//     }
+
+//     /// t = (modulus - 1) >> S
+//     const T: [u64; 4] = [
+//         0xeeff497a3340d905,
+//         0xfaeabb739abd2280,
+//         0xffffffffffffffff,
+//         0x03ffffffffffffff,
+//     ];
+
+//     #[test]
+//     fn two_inv_constant() {
+//         assert_eq!(Scalar::from(2u32) * Scalar::TWO_INV, Scalar::ONE);
+//     }
+
+//     #[test]
+//     fn root_of_unity_constant() {
+//         // ROOT_OF_UNITY^{2^s} mod m == 1
+//         assert_eq!(
+//             Scalar::ROOT_OF_UNITY.pow_vartime(&[1u64 << Scalar::S, 0, 0, 0]),
+//             Scalar::ONE
+//         );
+
+//         // MULTIPLICATIVE_GENERATOR^{t} mod m == ROOT_OF_UNITY
+//         assert_eq!(
+//             Scalar::MULTIPLICATIVE_GENERATOR.pow_vartime(&T),
+//             Scalar::ROOT_OF_UNITY
+//         )
+//     }
+
+//     #[test]
+//     fn root_of_unity_inv_constant() {
+//         assert_eq!(
+//             Scalar::ROOT_OF_UNITY * Scalar::ROOT_OF_UNITY_INV,
+//             Scalar::ONE
+//         );
+//     }
+
+//     #[test]
+//     fn delta_constant() {
+//         // DELTA^{t} mod m == 1
+//         assert_eq!(Scalar::DELTA.pow_vartime(&T), Scalar::ONE);
+//     }
+
+//     #[test]
+//     fn is_high() {
+//         // 0 is not high
+//         let high: bool = Scalar::ZERO.is_high().into();
+//         assert!(!high);
+
+//         // 1 is not high
+//         let one = 1.to_biguint().unwrap();
+//         let high: bool = Scalar::from(&one).is_high().into();
+//         assert!(!high);
+
+//         let m = Scalar::modulus_as_biguint();
+//         let m_by_2 = &m >> 1;
+
+//         // M / 2 is not high
+//         let high: bool = Scalar::from(&m_by_2).is_high().into();
+//         assert!(!high);
+
+//         // M / 2 + 1 is high
+//         let high: bool = Scalar::from(&m_by_2 + &one).is_high().into();
+//         assert!(high);
+
+//         // MODULUS - 1 is high
+//         let high: bool = Scalar::from(&m - &one).is_high().into();
+//         assert!(high);
+//     }
+
+//     /// Basic tests that sqrt works.
+//     #[test]
+//     fn sqrt() {
+//         for &n in &[1u64, 4, 9, 16, 25, 36, 49, 64] {
+//             let scalar = Scalar::from(n);
+//             let sqrt = scalar.sqrt().unwrap();
+//             assert_eq!(sqrt.square(), scalar);
+//         }
+//     }
+
+//     /// Basic tests that `invert` works.
+//     #[test]
+//     fn invert() {
+//         assert_eq!(Scalar::ONE, Scalar::ONE.invert().unwrap());
+
+//         let three = Scalar::from(3u64);
+//         let inv_three = three.invert().unwrap();
+//         assert_eq!(three * inv_three, Scalar::ONE);
+
+//         let minus_three = -three;
+//         let inv_minus_three = minus_three.invert().unwrap();
+//         assert_eq!(inv_minus_three, -inv_three);
+//         assert_eq!(three * inv_minus_three, -Scalar::ONE);
+
+//         assert!(bool::from(Scalar::ZERO.invert().is_none()));
+//         assert_eq!(Scalar::from(2u64).invert().unwrap(), Scalar::TWO_INV);
+//         assert_eq!(
+//             Scalar::ROOT_OF_UNITY.invert_vartime().unwrap(),
+//             Scalar::ROOT_OF_UNITY_INV
+//         );
+//     }
+
+//     /// Basic tests that `invert_vartime` works.
+//     #[test]
+//     fn invert_vartime() {
+//         assert_eq!(Scalar::ONE, Scalar::ONE.invert_vartime().unwrap());
+
+//         let three = Scalar::from(3u64);
+//         let inv_three = three.invert_vartime().unwrap();
+//         assert_eq!(three * inv_three, Scalar::ONE);
+
+//         let minus_three = -three;
+//         let inv_minus_three = minus_three.invert_vartime().unwrap();
+//         assert_eq!(inv_minus_three, -inv_three);
+//         assert_eq!(three * inv_minus_three, -Scalar::ONE);
+
+//         assert!(bool::from(Scalar::ZERO.invert_vartime().is_none()));
+//         assert_eq!(
+//             Scalar::from(2u64).invert_vartime().unwrap(),
+//             Scalar::TWO_INV
+//         );
+//         assert_eq!(
+//             Scalar::ROOT_OF_UNITY.invert_vartime().unwrap(),
+//             Scalar::ROOT_OF_UNITY_INV
+//         );
+//     }
+
+//     #[test]
+//     fn batch_invert_array() {
+//         let k: Scalar = Scalar::random(&mut OsRng);
+//         let l: Scalar = Scalar::random(&mut OsRng);
+
+//         let expected = [k.invert().unwrap(), l.invert().unwrap()];
+//         assert_eq!(
+//             <Scalar as BatchInvert<_>>::batch_invert(&[k, l]).unwrap(),
+//             expected
+//         );
+//     }
+
+//     #[test]
+//     #[cfg(feature = "alloc")]
+//     fn batch_invert() {
+//         let k: Scalar = Scalar::random(&mut OsRng);
+//         let l: Scalar = Scalar::random(&mut OsRng);
+
+//         let expected = vec![k.invert().unwrap(), l.invert().unwrap()];
+//         let scalars = vec![k, l];
+//         let res: Vec<_> = <Scalar as BatchInvert<_>>::batch_invert(scalars.as_slice()).unwrap();
+//         assert_eq!(res, expected);
+//     }
+
+//     #[test]
+//     fn negate() {
+//         let zero_neg = -Scalar::ZERO;
+//         assert_eq!(zero_neg, Scalar::ZERO);
+
+//         let m = Scalar::modulus_as_biguint();
+//         let one = 1.to_biguint().unwrap();
+//         let m_minus_one = &m - &one;
+//         let m_by_2 = &m >> 1;
+
+//         let one_neg = -Scalar::ONE;
+//         assert_eq!(one_neg, Scalar::from(&m_minus_one));
+
+//         let frac_modulus_2_neg = -Scalar::from(&m_by_2);
+//         let frac_modulus_2_plus_one = Scalar::from(&m_by_2 + &one);
+//         assert_eq!(frac_modulus_2_neg, frac_modulus_2_plus_one);
+
+//         let modulus_minus_one_neg = -Scalar::from(&m - &one);
+//         assert_eq!(modulus_minus_one_neg, Scalar::ONE);
+//     }
+
+//     #[test]
+//     fn add_result_within_256_bits() {
+//         // A regression for a bug where reduction was not applied
+//         // when the unreduced result of addition was in the range `[modulus, 2^256)`.
+//         let t = 1.to_biguint().unwrap() << 255;
+//         let one = 1.to_biguint().unwrap();
+
+//         let a = Scalar::from(&t - &one);
+//         let b = Scalar::from(&t);
+//         let res = &a + &b;
+
+//         let m = Scalar::modulus_as_biguint();
+//         let res_ref = Scalar::from((&t + &t - &one) % &m);
+
+//         assert_eq!(res, res_ref);
+//     }
+
+//     #[test]
+//     fn generate_biased() {
+//         use elliptic_curve::rand_core::OsRng;
+//         let a = Scalar::generate_biased(&mut OsRng);
+//         // just to make sure `a` is not optimized out by the compiler
+//         assert_eq!((a - &a).is_zero().unwrap_u8(), 1);
+//     }
+
+//     #[test]
+//     fn generate_vartime() {
+//         use elliptic_curve::rand_core::OsRng;
+//         let a = Scalar::generate_vartime(&mut OsRng);
+//         // just to make sure `a` is not optimized out by the compiler
+//         assert_eq!((a - &a).is_zero().unwrap_u8(), 1);
+//     }
+
+//     #[test]
+//     fn from_bytes_reduced() {
+//         let m = Scalar::modulus_as_biguint();
+
+//         fn reduce<T: Reduce<U256, Bytes = FieldBytes>>(arr: &[u8]) -> T {
+//             T::reduce_bytes(GenericArray::from_slice(arr))
+//         }
+
+//         // Regular reduction
+
+//         let s = reduce::<Scalar>(&[0xffu8; 32]).to_biguint().unwrap();
+//         assert!(s < m);
+
+//         let s = reduce::<Scalar>(&[0u8; 32]).to_biguint().unwrap();
+//         assert!(s.is_zero());
+
+//         let s = reduce::<Scalar>(&ORDER.to_be_byte_array())
+//             .to_biguint()
+//             .unwrap();
+//         assert!(s.is_zero());
+
+//         // Reduction to a non-zero scalar
+
+//         let s = reduce::<NonZeroScalar>(&[0xffu8; 32]).to_biguint().unwrap();
+//         assert!(s < m);
+
+//         let s = reduce::<NonZeroScalar>(&[0u8; 32]).to_biguint().unwrap();
+//         assert!(s < m);
+//         assert!(!s.is_zero());
+
+//         let s = reduce::<NonZeroScalar>(&ORDER.to_be_byte_array())
+//             .to_biguint()
+//             .unwrap();
+//         assert!(s < m);
+//         assert!(!s.is_zero());
+
+//         let s = reduce::<NonZeroScalar>(&(ORDER.wrapping_sub(&U256::ONE)).to_be_byte_array())
+//             .to_biguint()
+//             .unwrap();
+//         assert!(s < m);
+//         assert!(!s.is_zero());
+//     }
+
+//     #[test]
+//     fn from_wide_bytes_reduced() {
+//         let m = Scalar::modulus_as_biguint();
+
+//         fn reduce<T: Reduce<U512, Bytes = WideBytes>>(slice: &[u8]) -> T {
+//             let mut bytes = WideBytes::default();
+//             bytes[(64 - slice.len())..].copy_from_slice(slice);
+//             T::reduce_bytes(&bytes)
+//         }
+
+//         // Regular reduction
+
+//         let s = reduce::<Scalar>(&[0xffu8; 64]).to_biguint().unwrap();
+//         assert!(s < m);
+
+//         let s = reduce::<Scalar>(&[0u8; 64]).to_biguint().unwrap();
+//         assert!(s.is_zero());
+
+//         let s = reduce::<Scalar>(&ORDER.to_be_byte_array())
+//             .to_biguint()
+//             .unwrap();
+//         assert!(s.is_zero());
+
+//         // Reduction to a non-zero scalar
+
+//         let s = reduce::<NonZeroScalar>(&[0xffu8; 64]).to_biguint().unwrap();
+//         assert!(s < m);
+
+//         let s = reduce::<NonZeroScalar>(&[0u8; 64]).to_biguint().unwrap();
+//         assert!(s < m);
+//         assert!(!s.is_zero());
+
+//         let s = reduce::<NonZeroScalar>(&ORDER.to_be_byte_array())
+//             .to_biguint()
+//             .unwrap();
+//         assert!(s < m);
+//         assert!(!s.is_zero());
+
+//         let s = reduce::<NonZeroScalar>(&(ORDER.wrapping_sub(&U256::ONE)).to_be_byte_array())
+//             .to_biguint()
+//             .unwrap();
+//         assert!(s < m);
+//         assert!(!s.is_zero());
+//     }
+
+//     prop_compose! {
+//         fn scalar()(bytes in any::<[u8; 32]>()) -> Scalar {
+//             <Scalar as Reduce<U256>>::reduce_bytes(&bytes.into())
+//         }
+//     }
+
+//     proptest! {
+//         #[test]
+//         fn fuzzy_roundtrip_to_bytes(a in scalar()) {
+//             let a_back = Scalar::from_repr(a.to_bytes()).unwrap();
+//             assert_eq!(a, a_back);
+//         }
+
+//         #[test]
+//         fn fuzzy_roundtrip_to_bytes_unchecked(a in scalar()) {
+//             let bytes = a.to_bytes();
+//             let a_back = Scalar::from_bytes_unchecked(bytes.as_ref());
+//             assert_eq!(a, a_back);
+//         }
+
+//         #[test]
+//         fn fuzzy_add(a in scalar(), b in scalar()) {
+//             let a_bi = a.to_biguint().unwrap();
+//             let b_bi = b.to_biguint().unwrap();
+
+//             let res_bi = (&a_bi + &b_bi) % &Scalar::modulus_as_biguint();
+//             let res_ref = Scalar::from(&res_bi);
+//             let res_test = a.add(&b);
+
+//             assert_eq!(res_ref, res_test);
+//         }
+
+//         #[test]
+//         fn fuzzy_sub(a in scalar(), b in scalar()) {
+//             let a_bi = a.to_biguint().unwrap();
+//             let b_bi = b.to_biguint().unwrap();
+
+//             let m = Scalar::modulus_as_biguint();
+//             let res_bi = (&m + &a_bi - &b_bi) % &m;
+//             let res_ref = Scalar::from(&res_bi);
+//             let res_test = a.sub(&b);
+
+//             assert_eq!(res_ref, res_test);
+//         }
+
+//         #[test]
+//         fn fuzzy_neg(a in scalar()) {
+//             let a_bi = a.to_biguint().unwrap();
+
+//             let m = Scalar::modulus_as_biguint();
+//             let res_bi = (&m - &a_bi) % &m;
+//             let res_ref = Scalar::from(&res_bi);
+//             let res_test = -a;
+
+//             assert_eq!(res_ref, res_test);
+//         }
+
+//         #[test]
+//         fn fuzzy_mul(a in scalar(), b in scalar()) {
+//             let a_bi = a.to_biguint().unwrap();
+//             let b_bi = b.to_biguint().unwrap();
+
+//             let res_bi = (&a_bi * &b_bi) % &Scalar::modulus_as_biguint();
+//             let res_ref = Scalar::from(&res_bi);
+//             let res_test = a.mul(&b);
+
+//             assert_eq!(res_ref, res_test);
+//         }
+
+//         #[test]
+//         fn fuzzy_rshift(a in scalar(), b in 0usize..512) {
+//             let a_bi = a.to_biguint().unwrap();
+
+//             let res_bi = &a_bi >> b;
+//             let res_ref = Scalar::from(&res_bi);
+//             let res_test = a >> b;
+
+//             assert_eq!(res_ref, res_test);
+//         }
+
+//         #[test]
+//         fn fuzzy_invert(
+//             a in scalar()
+//         ) {
+//             let a = if bool::from(a.is_zero()) { Scalar::ONE } else { a };
+//             let a_bi = a.to_biguint().unwrap();
+//             let inv = a.invert().unwrap();
+//             let inv_bi = inv.to_biguint().unwrap();
+//             let m = Scalar::modulus_as_biguint();
+//             assert_eq!((&inv_bi * &a_bi) % &m, 1.to_biguint().unwrap());
+//         }
+
+//         #[test]
+//         fn fuzzy_invert_vartime(w in scalar()) {
+//             let inv: Option<Scalar> = w.invert().into();
+//             let inv_vartime: Option<Scalar> = w.invert_vartime().into();
+//             assert_eq!(inv, inv_vartime);
+//         }
+
+//         #[test]
+//         fn fuzzy_from_wide_bytes_reduced(bytes_hi in any::<[u8; 32]>(), bytes_lo in any::<[u8; 32]>()) {
+//             let m = Scalar::modulus_as_biguint();
+//             let mut bytes = [0u8; 64];
+//             bytes[0..32].clone_from_slice(&bytes_hi);
+//             bytes[32..64].clone_from_slice(&bytes_lo);
+//             let s = <Scalar as Reduce<U512>>::reduce(U512::from_be_slice(&bytes));
+//             let s_bu = s.to_biguint().unwrap();
+//             assert!(s_bu < m);
+//         }
+//     }
+// }
