@@ -1,6 +1,3 @@
 (function() {var implementors = {
-"daosign_eip712":[],
-"daosign_proof_of_agreement":[["impl Packable for <a class=\"struct\" href=\"daosign_proof_of_agreement/struct.ProofOfAgreement.html\" title=\"struct daosign_proof_of_agreement::ProofOfAgreement\">ProofOfAgreement</a>"]],
-"daosign_proof_of_authority":[["impl Packable for <a class=\"struct\" href=\"daosign_proof_of_authority/struct.Signer.html\" title=\"struct daosign_proof_of_authority::Signer\">Signer</a>"],["impl Packable for <a class=\"struct\" href=\"daosign_proof_of_authority/struct.ProofOfAuthority.html\" title=\"struct daosign_proof_of_authority::ProofOfAuthority\">ProofOfAuthority</a>"]],
-"daosign_proof_of_signature":[["impl Packable for <a class=\"struct\" href=\"daosign_proof_of_signature/struct.ProofOfSignature.html\" title=\"struct daosign_proof_of_signature::ProofOfSignature\">ProofOfSignature</a>"]]
+"daosign_eip712":[]
 };if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["ProofOfAgreement"]};
+window.SIDEBAR_ITEMS = {};

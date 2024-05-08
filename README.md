@@ -60,3 +60,7 @@ sudo chmod +x ./gen-docs.sh && ./gen-docs.sh
 - [NEAR Discord](https://near.chat)
 - [NEAR Telegram Developers Community Group](https://t.me/neardev)
 - NEAR DevHub: [Telegram](https://t.me/neardevhub), [Twitter](https://twitter.com/neardevhub)
+
+
+
+// cargo build -p daosign_eip712 --target wasm32-unknown-unknown --profile=contract

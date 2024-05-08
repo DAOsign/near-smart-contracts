@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["proof_of_authority_type","signer_type"],"struct":["ProofOfAuthority","Signer"]};
+window.SIDEBAR_ITEMS = {};

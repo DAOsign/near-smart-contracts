@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["ProofOfSignature"]};
+window.SIDEBAR_ITEMS = {};

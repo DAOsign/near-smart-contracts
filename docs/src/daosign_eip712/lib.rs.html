@@ -195,14 +195,34 @@
 <a href="#193" id="193">193</a>
 <a href="#194" id="194">194</a>
 <a href="#195" id="195">195</a>
+<a href="#196" id="196">196</a>
+<a href="#197" id="197">197</a>
+<a href="#198" id="198">198</a>
+<a href="#199" id="199">199</a>
+<a href="#200" id="200">200</a>
+<a href="#201" id="201">201</a>
+<a href="#202" id="202">202</a>
+<a href="#203" id="203">203</a>
+<a href="#204" id="204">204</a>
+<a href="#205" id="205">205</a>
+<a href="#206" id="206">206</a>
+<a href="#207" id="207">207</a>
+<a href="#208" id="208">208</a>
+<a href="#209" id="209">209</a>
+<a href="#210" id="210">210</a>
+<a href="#211" id="211">211</a>
+<a href="#212" id="212">212</a>
+<a href="#213" id="213">213</a>
+<a href="#214" id="214">214</a>
+<a href="#215" id="215">215</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
-<span class="kw">use </span>near_sdk::borsh::{BorshDeserialize, BorshSerialize};
+<span class="comment">// use secp256k1::{Secp256k1, ecdsa::{RecoverableSignature, RecoveryId}, Message};
+</span><span class="kw">use </span>near_sdk::{borsh::{BorshDeserialize, BorshSerialize}, near_bindgen};
 
 <span class="kw">use </span>schemars::JsonSchema;
 <span class="kw">use </span>serde::{Deserialize, Serialize};
 <span class="kw">use </span>sha3::{Digest, Keccak256};
-<span class="kw">use </span>std::collections::HashMap;
-<span class="kw">use </span>std::io::Error;
+<span class="kw">use </span>std::{collections::HashMap, io::Error};
 <span class="kw">use </span>tiny_keccak::{Hasher, Keccak};
 
 <span class="kw">static </span>EIP712DOMAIN_TYPEHASH: [u8; <span class="number">32</span>] = [
@@ -210,19 +230,20 @@
     <span class="number">155</span>, <span class="number">15</span>, <span class="number">250</span>, <span class="number">202</span>, <span class="number">169</span>, <span class="number">167</span>, <span class="number">93</span>, <span class="number">82</span>, <span class="number">43</span>, <span class="number">57</span>, <span class="number">64</span>, <span class="number">15</span>,
 ];
 
-<span class="kw">pub trait </span>Packable {
+<span class="comment">// /// EIP712PropertyType struct representing the structure of EIP-712 properties.
+// #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+// pub struct EIP712PropertyType {
+//     pub name: String,
+//     pub r#type: String,
+// }
+
+</span><span class="kw">pub trait </span>Packable {
     <span class="kw">fn </span>pack(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec&lt;u8&gt;;
+    <span class="kw">fn </span>get_greeting(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; String;
 }
 
-<span class="doccomment">/// EIP712PropertyType struct representing the structure of EIP-712 properties.
-</span><span class="attr">#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-</span><span class="kw">pub struct </span>EIP712PropertyType {
-    <span class="kw">pub </span>name: String,
-    <span class="kw">pub </span>r#type: String,
-}
-
-<span class="comment">// #[near_bindgen]
-</span><span class="attr">#[derive(
+<span class="attr">#[near_bindgen]
+#[derive(
     BorshDeserialize,
     BorshSerialize,
     Serialize,
@@ -234,13 +255,31 @@
     JsonSchema,
 )]
 </span><span class="kw">pub struct </span>EIP712Domain {
+    greeting: String,
     <span class="kw">pub </span>name: String,
     <span class="kw">pub </span>version: String,
     <span class="kw">pub </span>chain_id: u64,
     <span class="kw">pub </span>verifying_contract: [u8; <span class="number">20</span>],
 }
 
-<span class="kw">impl </span>Packable <span class="kw">for </span>EIP712Domain {
+<span class="kw">impl </span>Default <span class="kw">for </span>EIP712Domain {
+    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+        <span class="self">Self </span>{
+            greeting: <span class="string">"Hello from EIP712Domain 2"</span>.to_string(),
+            name: String::from(<span class="string">""</span>),
+            version: String::from(<span class="string">""</span>),
+            chain_id: <span class="number">0</span>,
+            verifying_contract: &lt;[u8; <span class="number">20</span>]&gt;::default(),
+        }
+    }
+}
+
+<span class="attr">#[near_bindgen]
+</span><span class="kw">impl </span>Packable <span class="kw">for </span>EIP712Domain {
+    <span class="kw">fn </span>get_greeting(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; String {
+        <span class="self">self</span>.greeting.clone()
+    }
+
     <span class="kw">fn </span>pack(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec&lt;u8&gt; {
         <span class="kw">let </span><span class="kw-2">mut </span>encoded: Vec&lt;u8&gt; = Vec::new();
         encoded.extend_from_slice(<span class="kw-2">&amp;</span>EIP712DOMAIN_TYPEHASH.clone());
@@ -294,17 +333,17 @@
     <span class="prelude-val">Ok</span>(output)
 }
 
-<span class="doccomment">/// # Helper function to get Keccak-256 hash of any given array of bytes.
-///
-/// This function takes an array of bytes as input and calculates its Keccak-256 hash.
-///
-/// # Arguments
-///
-/// * `input` - Array of bytes to be hashed.
-///
-/// # Returns
-///
-/// A 32-byte array representing the Keccak-256 hash of the input array of bytes.
+<span class="comment">// # Helper function to get Keccak-256 hash of any given array of bytes.
+//
+// This function takes an array of bytes as input and calculates its Keccak-256 hash.
+//
+// # Arguments
+//
+// * `input` - Array of bytes to be hashed.
+//
+// # Returns
+//
+// A 32-byte array representing the Keccak-256 hash of the input array of bytes.
 </span><span class="kw">fn </span>keccak_hash_bytes(input: <span class="kw-2">&amp;</span>[u8]) -&gt; [u8; <span class="number">32</span>] {
     <span class="kw">let </span><span class="kw-2">mut </span>keccak = Keccak::v256();
     <span class="kw">let </span><span class="kw-2">mut </span>output = [<span class="number">0u8</span>; <span class="number">32</span>];
@@ -313,42 +352,43 @@
     output
 }
 
-<span class="attr">#[derive(Debug, Clone, PartialEq, Eq)]
-</span><span class="kw">pub struct </span>EIP712Message&lt;T: Packable&gt; {
-    <span class="kw">pub </span>types: HashMap&lt;String, Vec&lt;EIP712PropertyType&gt;&gt;,
-    <span class="kw">pub </span>domain: EIP712Domain,
-    <span class="kw">pub </span>primary_type: String,
-    <span class="kw">pub </span>message: T,
-}
+<span class="comment">// #[derive(Debug, Clone, PartialEq, Eq)]
+// pub struct EIP712Message&lt;T: Packable&gt; {
+//     pub types: HashMap&lt;String, Vec&lt;EIP712PropertyType&gt;&gt;,
+//     pub domain: EIP712Domain,
+//     pub primary_type: String,
+//     pub message: T,
+// }
 
-<span class="kw">pub fn </span>eip712_domain_type() -&gt; Vec&lt;EIP712PropertyType&gt; {
-    <span class="macro">vec!</span>[
-        EIP712PropertyType {
-            name: String::from(<span class="string">"name"</span>),
-            r#type: String::from(<span class="string">"string"</span>),
-        },
-        EIP712PropertyType {
-            name: String::from(<span class="string">"version"</span>),
-            r#type: String::from(<span class="string">"string"</span>),
-        },
-        EIP712PropertyType {
-            name: String::from(<span class="string">"chainId"</span>),
-            r#type: String::from(<span class="string">"uint256"</span>),
-        },
-        EIP712PropertyType {
-            name: String::from(<span class="string">"verifyingContract"</span>),
-            r#type: String::from(<span class="string">"address"</span>),
-        },
-    ]
-}
+// pub fn eip712_domain_type() -&gt; Vec&lt;EIP712PropertyType&gt; {
+//     vec![
+//         EIP712PropertyType {
+//             name: String::from("name"),
+//             r#type: String::from("string"),
+//         },
+//         EIP712PropertyType {
+//             name: String::from("version"),
+//             r#type: String::from("string"),
+//         },
+//         EIP712PropertyType {
+//             name: String::from("chainId"),
+//             r#type: String::from("uint256"),
+//         },
+//         EIP712PropertyType {
+//             name: String::from("verifyingContract"),
+//             r#type: String::from("address"),
+//         },
+//     ]
+// }
 
-<span class="attr">#[cfg(test)]
+</span><span class="attr">#[cfg(test)]
 </span><span class="kw">mod </span>tests {
     <span class="kw">use super</span>::<span class="kw-2">*</span>;
     <span class="kw">use </span>hex::FromHex;
 
     <span class="kw">fn </span>domain() -&gt; EIP712Domain {
         EIP712Domain {
+            greeting: String::from(<span class="string">"Hello from EIP712Domain"</span>),
             name: String::from(<span class="string">"daosign"</span>),
             version: String::from(<span class="string">"0.1.0"</span>),
             chain_id: <span class="number">1</span>,

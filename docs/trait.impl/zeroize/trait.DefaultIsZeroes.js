@@ -1,0 +1,3 @@
+(function() {var implementors = {
+"k256":[["impl DefaultIsZeroes for <a class=\"struct\" href=\"k256/struct.ProjectivePoint.html\" title=\"struct k256::ProjectivePoint\">ProjectivePoint</a>"],["impl DefaultIsZeroes for <a class=\"struct\" href=\"k256/struct.AffinePoint.html\" title=\"struct k256::AffinePoint\">AffinePoint</a>"],["impl DefaultIsZeroes for <a class=\"struct\" href=\"k256/struct.Scalar.html\" title=\"struct k256::Scalar\">Scalar</a>"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

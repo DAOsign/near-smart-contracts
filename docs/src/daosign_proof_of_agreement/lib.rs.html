@@ -132,136 +132,136 @@
 <a href="#130" id="130">130</a>
 <a href="#131" id="131">131</a>
 <a href="#132" id="132">132</a>
-</pre></div><pre class="rust"><code><span class="kw">use </span>daosign_eip712::{
-    eip712_domain_type, sha3, EIP712Domain, EIP712Message, EIP712PropertyType, Packable,
-};
-<span class="kw">use </span>near_sdk::borsh::{<span class="self">self</span>, BorshDeserialize, BorshSerialize};
-<span class="comment">// use near_sdk::near_bindgen;
-</span><span class="kw">use </span>serde::{Deserialize, Serialize};
-<span class="kw">use </span>std::collections::HashMap;
+</pre></div><pre class="rust"><code><span class="comment">// use daosign_eip712::{
+//     eip712_domain_type, sha3, EIP712Domain, EIP712Message, EIP712PropertyType, Packable,
+// };
+// use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+// // use near_sdk::near_bindgen;
+// use serde::{Deserialize, Serialize};
+// use std::collections::HashMap;
 
-<span class="kw">use </span>schemars::JsonSchema;
+// use schemars::JsonSchema;
 
-<span class="kw">static </span>PROOF_OF_AGREEMENT_TYPEHASH: [u8; <span class="number">32</span>] = [
-    <span class="number">185</span>, <span class="number">27</span>, <span class="number">12</span>, <span class="number">51</span>, <span class="number">75</span>, <span class="number">214</span>, <span class="number">207</span>, <span class="number">181</span>, <span class="number">70</span>, <span class="number">113</span>, <span class="number">59</span>, <span class="number">190</span>, <span class="number">184</span>, <span class="number">233</span>, <span class="number">248</span>, <span class="number">119</span>, <span class="number">28</span>, <span class="number">64</span>, <span class="number">225</span>, <span class="number">24</span>, <span class="number">110</span>,
-    <span class="number">118</span>, <span class="number">31</span>, <span class="number">55</span>, <span class="number">253</span>, <span class="number">52</span>, <span class="number">142</span>, <span class="number">191</span>, <span class="number">198</span>, <span class="number">65</span>, <span class="number">42</span>, <span class="number">150</span>,
-];
+// static PROOF_OF_AGREEMENT_TYPEHASH: [u8; 32] = [
+//     185, 27, 12, 51, 75, 214, 207, 181, 70, 113, 59, 190, 184, 233, 248, 119, 28, 64, 225, 24, 110,
+//     118, 31, 55, 253, 52, 142, 191, 198, 65, 42, 150,
+// ];
 
-<span class="kw">fn </span>proof_of_agreement_type() -&gt; Vec&lt;EIP712PropertyType&gt; {
-    <span class="macro">vec!</span>[
-        EIP712PropertyType {
-            name: String::from(<span class="string">"authorityCID"</span>),
-            r#type: String::from(<span class="string">"string"</span>),
-        },
-        EIP712PropertyType {
-            name: String::from(<span class="string">"signatureCIDs"</span>),
-            r#type: String::from(<span class="string">"string[]"</span>),
-        },
-        EIP712PropertyType {
-            name: String::from(<span class="string">"timestamp"</span>),
-            r#type: String::from(<span class="string">"uint256"</span>),
-        },
-        EIP712PropertyType {
-            name: String::from(<span class="string">"metadata"</span>),
-            r#type: String::from(<span class="string">"string"</span>),
-        },
-    ]
-}
+// fn proof_of_agreement_type() -&gt; Vec&lt;EIP712PropertyType&gt; {
+//     vec![
+//         EIP712PropertyType {
+//             name: String::from("authorityCID"),
+//             r#type: String::from("string"),
+//         },
+//         EIP712PropertyType {
+//             name: String::from("signatureCIDs"),
+//             r#type: String::from("string[]"),
+//         },
+//         EIP712PropertyType {
+//             name: String::from("timestamp"),
+//             r#type: String::from("uint256"),
+//         },
+//         EIP712PropertyType {
+//             name: String::from("metadata"),
+//             r#type: String::from("string"),
+//         },
+//     ]
+// }
 
-<span class="doccomment">/// ProofOfAgreement struct representing the Proof-of-Agreement parameters.
-</span><span class="comment">// #[near_bindgen]
-</span><span class="attr">#[derive(
-    BorshDeserialize,
-    BorshSerialize,
-    Serialize,
-    Deserialize,
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    JsonSchema,
-)]
-</span><span class="kw">pub struct </span>ProofOfAgreement {
-    <span class="kw">pub </span>authority_cid: String,
-    <span class="kw">pub </span>signature_cids: Vec&lt;String&gt;,
-    <span class="kw">pub </span>timestamp: u64,
-    <span class="kw">pub </span>metadata: String,
-}
+// /// ProofOfAgreement struct representing the Proof-of-Agreement parameters.
+// // #[near_bindgen]
+// #[derive(
+//     BorshDeserialize,
+//     BorshSerialize,
+//     Serialize,
+//     Deserialize,
+//     Debug,
+//     Clone,
+//     PartialEq,
+//     Eq,
+//     JsonSchema,
+// )]
+// pub struct ProofOfAgreement {
+//     pub authority_cid: String,
+//     pub signature_cids: Vec&lt;String&gt;,
+//     pub timestamp: u64,
+//     pub metadata: String,
+// }
 
-<span class="kw">impl </span>ProofOfAgreement {
-    <span class="kw">pub fn </span>to_eip712_message(<span class="kw-2">&amp;</span><span class="self">self</span>, domain: <span class="kw-2">&amp;</span>EIP712Domain) -&gt; EIP712Message&lt;ProofOfAgreement&gt; {
-        EIP712Message {
-            types: HashMap::from([
-                (String::from(<span class="string">"EIP712Domain"</span>), eip712_domain_type()),
-                (String::from(<span class="string">"ProofOfAgreement"</span>), proof_of_agreement_type()),
-            ]),
-            domain: domain.clone(),
-            primary_type: String::from(<span class="string">"ProofOfAgreement"</span>),
-            message: <span class="self">self</span>.clone(),
-        }
-    }
-}
+// impl ProofOfAgreement {
+//     pub fn to_eip712_message(&amp;self, domain: &amp;EIP712Domain) -&gt; EIP712Message&lt;ProofOfAgreement&gt; {
+//         EIP712Message {
+//             types: HashMap::from([
+//                 (String::from("EIP712Domain"), eip712_domain_type()),
+//                 (String::from("ProofOfAgreement"), proof_of_agreement_type()),
+//             ]),
+//             domain: domain.clone(),
+//             primary_type: String::from("ProofOfAgreement"),
+//             message: self.clone(),
+//         }
+//     }
+// }
 
-<span class="kw">impl </span>Packable <span class="kw">for </span>ProofOfAgreement {
-    <span class="kw">fn </span>pack(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec&lt;u8&gt; {
-        <span class="kw">let </span><span class="kw-2">mut </span>signature_cids = Vec::new();
-        <span class="kw">for </span>string <span class="kw">in </span><span class="self">self</span>.signature_cids.iter() {
-            signature_cids.extend(sha3(string.as_bytes()))
-        }
-        <span class="kw">let </span><span class="kw-2">mut </span>encoded: Vec&lt;u8&gt; = Vec::new();
-        encoded.extend_from_slice(<span class="kw-2">&amp;</span>PROOF_OF_AGREEMENT_TYPEHASH.clone());
-        encoded.extend_from_slice(<span class="kw-2">&amp;</span>sha3(<span class="self">self</span>.authority_cid.as_bytes()));
-        encoded.extend_from_slice(<span class="kw-2">&amp;</span>sha3(signature_cids.as_slice()));
-        encoded.extend_from_slice(&lt;[u8; <span class="number">24</span>]&gt;::default().as_slice());
-        encoded.extend_from_slice(<span class="kw-2">&amp;</span><span class="self">self</span>.timestamp.to_be_bytes());
-        encoded.extend_from_slice(<span class="kw-2">&amp;</span>sha3(<span class="self">self</span>.metadata.as_bytes()));
-        encoded
-    }
-}
+// impl Packable for ProofOfAgreement {
+//     fn pack(&amp;self) -&gt; Vec&lt;u8&gt; {
+//         let mut signature_cids = Vec::new();
+//         for string in self.signature_cids.iter() {
+//             signature_cids.extend(sha3(string.as_bytes()))
+//         }
+//         let mut encoded: Vec&lt;u8&gt; = Vec::new();
+//         encoded.extend_from_slice(&amp;PROOF_OF_AGREEMENT_TYPEHASH.clone());
+//         encoded.extend_from_slice(&amp;sha3(self.authority_cid.as_bytes()));
+//         encoded.extend_from_slice(&amp;sha3(signature_cids.as_slice()));
+//         encoded.extend_from_slice(&lt;[u8; 24]&gt;::default().as_slice());
+//         encoded.extend_from_slice(&amp;self.timestamp.to_be_bytes());
+//         encoded.extend_from_slice(&amp;sha3(self.metadata.as_bytes()));
+//         encoded
+//     }
+// }
 
-<span class="attr">#[cfg(test)]
-</span><span class="kw">mod </span>tests {
-    <span class="kw">use super</span>::<span class="kw-2">*</span>;
-    <span class="kw">use </span>hex::FromHex;
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use hex::FromHex;
 
-    <span class="kw">const </span>SOME_ADDR: [u8; <span class="number">20</span>] = [
-        <span class="number">243</span>, <span class="number">159</span>, <span class="number">214</span>, <span class="number">229</span>, <span class="number">26</span>, <span class="number">173</span>, <span class="number">136</span>, <span class="number">246</span>, <span class="number">244</span>, <span class="number">206</span>, <span class="number">106</span>, <span class="number">184</span>, <span class="number">130</span>, <span class="number">114</span>, <span class="number">121</span>, <span class="number">207</span>, <span class="number">255</span>, <span class="number">185</span>,
-        <span class="number">34</span>, <span class="number">102</span>,
-    ];
+//     const SOME_ADDR: [u8; 20] = [
+//         243, 159, 214, 229, 26, 173, 136, 246, 244, 206, 106, 184, 130, 114, 121, 207, 255, 185,
+//         34, 102,
+//     ];
 
-    <span class="kw">fn </span>domain() -&gt; EIP712Domain {
-        EIP712Domain {
-            name: String::from(<span class="string">"daosign"</span>),
-            version: String::from(<span class="string">"0.1.0"</span>),
-            chain_id: <span class="number">1</span>,
-            verifying_contract: &lt;[u8; <span class="number">20</span>]&gt;::from_hex(<span class="string">"0000000000000000000000000000000000000000"</span>)
-                .expect(<span class="string">"bad address"</span>),
-        }
-    }
+//     fn domain() -&gt; EIP712Domain {
+//         EIP712Domain {
+//             name: String::from("daosign"),
+//             version: String::from("0.1.0"),
+//             chain_id: 1,
+//             verifying_contract: &lt;[u8; 20]&gt;::from_hex("0000000000000000000000000000000000000000")
+//                 .expect("bad address"),
+//         }
+//     }
 
-    <span class="attr">#[test]
-    </span><span class="kw">fn </span>check_typehash() {
-        <span class="macro">assert_eq!</span>(PROOF_OF_AGREEMENT_TYPEHASH, sha3(<span class="string">b"ProofOfAgreement(string authorityCID,string[] signatureCIDs,uint256 timestamp,string metadata)"</span>));
-    }
+//     #[test]
+//     fn check_typehash() {
+//         assert_eq!(PROOF_OF_AGREEMENT_TYPEHASH, sha3(b"ProofOfAgreement(string authorityCID,string[] signatureCIDs,uint256 timestamp,string metadata)"));
+//     }
 
-    <span class="attr">#[test]
-    </span><span class="kw">fn </span>check_type() {
-        <span class="kw">let </span>message = ProofOfAgreement {
-            authority_cid: String::from(<span class="string">"authorityCID"</span>),
-            signature_cids: <span class="macro">vec!</span>[String::from(<span class="string">"signatureCID0"</span>), String::from(<span class="string">"signatureCID1"</span>)],
-            timestamp: <span class="number">1710330067</span>,
-            metadata: String::from(<span class="string">"metadata"</span>),
-        };
+//     #[test]
+//     fn check_type() {
+//         let message = ProofOfAgreement {
+//             authority_cid: String::from("authorityCID"),
+//             signature_cids: vec![String::from("signatureCID0"), String::from("signatureCID1")],
+//             timestamp: 1710330067,
+//             metadata: String::from("metadata"),
+//         };
 
-        <span class="kw">let </span>expected_hash: [u8; <span class="number">32</span>] = &lt;[u8; <span class="number">32</span>]&gt;::from_hex(
-            <span class="string">"70b7103d5b78c366091856f2051002ec537e2e3279f9364e800322aaa231a28b"</span>,
-        )
-        .unwrap();
-        <span class="macro">assert_eq!</span>(expected_hash, daosign_eip712::hash(<span class="kw-2">&amp;</span>message));
+//         let expected_hash: [u8; 32] = &lt;[u8; 32]&gt;::from_hex(
+//             "70b7103d5b78c366091856f2051002ec537e2e3279f9364e800322aaa231a28b",
+//         )
+//         .unwrap();
+//         assert_eq!(expected_hash, daosign_eip712::hash(&amp;message));
 
-        <span class="kw">let </span>signature = &lt;[u8; <span class="number">65</span>]&gt;::from_hex(<span class="string">"f69f89ea63a0289b15089c94a0a1243d8e9815950770652ffc708a0d20419fed1de5406476301fda2e0f073b4a872d7dd63f7b3445f60c1cfe4f8c8c0dabb21c1c"</span>).unwrap();
-        <span class="kw">let </span>recovered = daosign_eip712::recover(<span class="kw-2">&amp;</span>domain(), <span class="kw-2">&amp;</span>message, <span class="kw-2">&amp;</span>signature);
-        <span class="macro">assert_eq!</span>(SOME_ADDR, recovered.unwrap())
-    }
-}
-</code></pre></div></section></main></body></html>
+//         let signature = &lt;[u8; 65]&gt;::from_hex("f69f89ea63a0289b15089c94a0a1243d8e9815950770652ffc708a0d20419fed1de5406476301fda2e0f073b4a872d7dd63f7b3445f60c1cfe4f8c8c0dabb21c1c").unwrap();
+//         let recovered = daosign_eip712::recover(&amp;domain(), &amp;message, &amp;signature);
+//         assert_eq!(SOME_ADDR, recovered.unwrap())
+//     }
+// }
+</span></code></pre></div></section></main></body></html>
