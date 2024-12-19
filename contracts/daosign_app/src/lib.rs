@@ -6,33 +6,13 @@ mod daosign_app {
     use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
 
+    use daosign_attestation::Attestation;
     use daosign_eip712::{recover, EIP712Domain};
     use daosign_proof_of_agreement::ProofOfAgreement;
-    use daosign_proof_of_authority::ProofOfAuthority;
     use daosign_proof_of_signature::ProofOfSignature;
+    use daosign_schema::Schema;
 
     use schemars::JsonSchema;
-
-    // structs definition
-    //
-
-    /// Represents a signed Proof-of-Authority with the message, signature, and proof CID.
-    #[derive(
-        BorshDeserialize,
-        BorshSerialize,
-        Serialize,
-        Deserialize,
-        Debug,
-        Clone,
-        PartialEq,
-        Eq,
-        JsonSchema,
-    )]
-    pub struct SignedProofOfAuthority {
-        message: ProofOfAuthority,
-        signature: Vec<u8>,
-        proof_cid: String,
-    }
 
     /// Represents a signed Proof-of-Signature with the message, signature, and proof CID.
     #[derive(

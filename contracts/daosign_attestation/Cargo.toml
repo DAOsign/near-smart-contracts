@@ -1,5 +1,5 @@
 [package]
-name = "daosign_proof_of_authority"
+name = "daosign_attestation"
 version = "1.0.0"
 authors = ["Misha Kushka, CIDT <https://consideritdone.tech>"]
 edition = "2021"
@@ -14,6 +14,7 @@ daosign_eip712 = { path = "../daosign_eip712" }
 borsh = "1.4.0"
 borsh-derive = "1.4.0"
 schemars = "0.8.16"
+hex = "0.4"
 
 [dev-dependencies]
 hex = { workspace = true }
