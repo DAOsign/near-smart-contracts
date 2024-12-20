@@ -38,8 +38,6 @@ pub struct EIP712PropertyType {
 pub struct EIP712Domain {
     pub name: String,
     pub version: String,
-    pub chain_id: u64,
-    pub verifying_contract: [u8; 20],
 }
 
 impl Packable for EIP712Domain {
@@ -48,10 +46,6 @@ impl Packable for EIP712Domain {
         encoded.extend_from_slice(&EIP712DOMAIN_TYPEHASH.clone());
         encoded.extend_from_slice(&sha3(self.name.as_bytes()));
         encoded.extend_from_slice(&sha3(self.version.as_bytes()));
-        encoded.extend_from_slice(<[u8; 24]>::default().as_slice());
-        encoded.extend_from_slice(&self.chain_id.to_be_bytes());
-        encoded.extend_from_slice(<[u8; 12]>::default().as_slice());
-        encoded.extend_from_slice(&self.verifying_contract.clone());
         encoded
     }
 }
@@ -153,9 +147,6 @@ mod tests {
         EIP712Domain {
             name: String::from("daosign"),
             version: String::from("0.1.0"),
-            chain_id: 1,
-            verifying_contract: <[u8; 20]>::from_hex("0000000000000000000000000000000000000000")
-                .expect("bad address"),
         }
     }
 

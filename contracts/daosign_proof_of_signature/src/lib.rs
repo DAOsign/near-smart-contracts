@@ -92,10 +92,7 @@ mod tests {
     fn domain() -> EIP712Domain {
         EIP712Domain {
             name: String::from("daosign"),
-            version: String::from("0.1.0"),
-            chain_id: 1,
-            verifying_contract: <[u8; 20]>::from_hex("0000000000000000000000000000000000000000")
-                .expect("bad address"),
+            version: String::from("0.1.0")
         }
     }
 

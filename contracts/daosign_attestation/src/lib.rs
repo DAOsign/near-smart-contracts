@@ -125,13 +125,13 @@ impl Packable for Attestation {
         encoded.extend_from_slice(&self.schema_id.to_be_bytes());
 
         // 4. Encode attestation results using the new function
-        encoded.extend_from_slice(&pack_attestation_result(&self.attestation_result));
+        encoded.extend_from_slice(&sha3(&pack_attestation_result(&self.attestation_result)));
 
-        // 5. Encode creator
-        encoded.extend_from_slice(&hex::decode(&self.creator).unwrap());
+        // 5. Encode creator address
+        encoded.extend_from_slice(&self.creator);
 
-        // 6. Encode recipient
-        encoded.extend_from_slice(&hex::decode(&self.recipient).unwrap());
+        // 6. Encode recipient address
+        encoded.extend_from_slice(&self.recipient);
 
         // 7. Encode created_at
         encoded.extend_from_slice(&self.created_at.to_be_bytes());
@@ -184,17 +184,20 @@ mod test {
     use super::*;
     use hex::FromHex;
 
-    const SOME_ADDR: [u8; 20] = [
+    const OWNER_ADDR: [u8; 20] = [
         243, 159, 214, 229, 26, 173, 136, 246, 244, 206, 106, 184, 130, 114, 121, 207, 255, 185,
         34, 102,
+    ];
+    const OTHER_ADDR: [u8; 20] = [
+        112, 153, 121, 112, 197, 24, 18, 220, 58, 1, 12, 125, 1, 181, 14, 13, 23, 220, 121, 200,
+    ];
+    const SOME_ADDR: [u8; 20] = [
+        60, 68, 205, 221, 182, 169, 0, 250, 43, 88, 93, 210, 153, 224, 61, 18, 250, 66, 147, 188,
     ];
     fn domain() -> EIP712Domain {
         EIP712Domain {
             name: String::from("daosign"),
             version: String::from("0.1.0"),
-            chain_id: 1,
-            verifying_contract: <[u8; 20]>::from_hex("0000000000000000000000000000000000000000")
-                .expect("bad address"),
         }
     }
 
@@ -208,14 +211,14 @@ mod test {
         // Create a vector of AttestationResults
         let attestation_results = vec![
             AttestationResult {
-                attestation_result_type: String::from("example_type_1"),
-                name: String::from("First Example Attestation"),
-                value: vec![1, 2, 3, 4], // Example byte data; adjust as needed
+                attestation_result_type: String::from("string"),
+                name: String::from("vacancies"),
+                value: vec![18, 52, 86, 171, 205, 239, 255, 255], // Example byte data; adjust as needed
             },
             AttestationResult {
-                attestation_result_type: String::from("example_type_2"),
-                name: String::from("Second Example Attestation"),
-                value: vec![5, 6, 7, 8], // Another example byte data
+                attestation_result_type: String::from("uint256"),
+                name: String::from("salary"),
+                value: vec![16, 0], // Another example byte data
             },
         ];
 
@@ -224,17 +227,17 @@ mod test {
             attestation_id: 0,
             schema_id: 0,
             attestation_result: attestation_results, // Assign the vector of results
-            creator: SOME_ADDR,                      // Encode the creator's address
-            recipient: SOME_ADDR,                    // Encode the recipient's address
-            created_at: 0,                           // Example timestamp; adjust as needed
+            creator: OWNER_ADDR,                     // Encode the creator's address
+            recipient: OTHER_ADDR,                   // Encode the recipient's address
+            created_at: 1,                           // Timestamp
             signatories: vec![
-                SOME_ADDR, // First signatory address
-                SOME_ADDR, // Second signatory address (example)
+                OTHER_ADDR, // First signatory address
+                SOME_ADDR,  // Second signatory address
             ],
             signature: Vec::new(),
         };
         let expected_hash: [u8; 32] = <[u8; 32]>::from_hex(
-            "5685b6f522ba0faa64a751773ca3796b5b525a81fe603c7962e88c803cb0e58b",
+            "a658657462f8eccf97d075b6b2ca03617bf9ebcb4b27f615d74b1ad50106eb6c",
         )
         .unwrap();
         assert_eq!(expected_hash, daosign_eip712::hash(&message));
