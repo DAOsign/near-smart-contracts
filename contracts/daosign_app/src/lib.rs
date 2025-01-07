@@ -1,18 +1,16 @@
 mod daosign_app {
+    use ed25519_dalek::PublicKey;
     use near_sdk::{
         borsh::{self, BorshDeserialize, BorshSerialize},
-        log, near_bindgen,
+        env, log, near_bindgen,
     };
     use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
 
     use daosign_attestation::Attestation;
-    use daosign_eip712::{recover, EIP712Domain};
     use daosign_proof_of_agreement::ProofOfAgreement;
     use daosign_proof_of_signature::ProofOfSignature;
     use daosign_schema::Schema;
-
-    use schemars::JsonSchema;
 
     /// Main storage structure for DAOsignApp contract.
     #[near_bindgen]
@@ -20,599 +18,369 @@ mod daosign_app {
         BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq,
     )]
     pub struct DAOSignApp {
-        domain: EIP712Domain,
-        poaus: HashMap<String, ProofOfAgreement>,
-        posis: HashMap<String, ProofOfSignature>,
-        poags: HashMap<String, ProofOfAgreement>,
-        proof2signer: HashMap<String, [u8; 20]>,
-        poau_signers_idx: HashMap<(String, [u8; 20]), u32>,
+        // Counters for schemas and attestations
+        pub schema_id: u128,
+        pub attestation_id: u128,
+
+        // Mappings
+        pub schemas: HashMap<u128, Schema>, // schema_id => Schema
+        pub attestations: HashMap<u128, Attestation>, // attestation_id => Attestation
+        pub poa: HashMap<u128, Vec<ProofOfAgreement>>, // attestation_id => ProofOfSignature
+        pub pos: HashMap<u128, Vec<ProofOfSignature>>, // attestation_id => ProofOfAgreement
+        pub signed_attestation: HashMap<u128, HashMap<Vec<u8>, bool>>, // attestation_id  => user => signed
+        pub user_attestation: HashMap<u128, HashMap<[u8; 32], Vec<Attestation>>>, // schema_id  => user => Attestation[]
     }
 
     impl Default for DAOSignApp {
         fn default() -> Self {
             Self {
-                domain: EIP712Domain {
-                    name: "".to_string(),
-                    version: "".to_string(),
-                },
-                poaus: HashMap::new(),
-                posis: HashMap::new(),
-                poags: HashMap::new(),
-                proof2signer: HashMap::new(),
-                poau_signers_idx: HashMap::new(),
+                schema_id: 0,
+                attestation_id: 0,
+                schemas: HashMap::new(),
+                attestations: HashMap::new(),
+                poa: HashMap::new(),
+                pos: HashMap::new(),
+                signed_attestation: HashMap::new(),
+                user_attestation: HashMap::new(),
             }
         }
     }
 
     #[near_bindgen]
     impl DAOSignApp {
-        // Length of IPFS Content Identifier (CID)
-        const IPFS_CID_LENGTH: usize = 46;
-        // Default value for zero address
-        const ZERO_ADDR: [u8; 20] = [0u8; 20];
-
         /// # Constructor for creating a new DAOsignApp instance.
         ///
-        /// This constructor initializes a new DAOsignApp contract instance with the provided EIP712 domain.
-        ///
-        /// # Arguments
-        ///
-        /// * `domain` - EIP712Domain struct representing the domain of the contract.
+        /// This constructor initializes a new DAOsignApp contract instance.
         ///
         /// # Returns
         ///
         /// A new instance of DAOsignApp.
         #[init]
-        pub fn new(domain: EIP712Domain) -> Self {
+        pub fn new() -> Self {
             Self {
-                domain,
-                poaus: HashMap::new(),
-                posis: HashMap::new(),
-                poags: HashMap::new(),
-                proof2signer: HashMap::new(),
-                poau_signers_idx: HashMap::new(),
+                schema_id: 0,
+                attestation_id: 0,
+                schemas: HashMap::new(),
+                attestations: HashMap::new(),
+                poa: HashMap::new(),
+                pos: HashMap::new(),
+                signed_attestation: HashMap::new(),
+                user_attestation: HashMap::new(),
             }
         }
 
-        pub fn get_domain(&self) -> EIP712Domain {
-            self.domain.clone()
+        /// # Creates a new schema.
+        ///   The Schema object containing metadata and definition to be created.
+        #[payable]
+        pub fn store_schema(&mut self, data: Schema, caller: [u8; 32]) {
+            let caller_key = PublicKey::from_bytes(&caller).unwrap();
+
+            // Validate the data
+            data.validate(caller_key);
+
+            // Store
+            self.schemas.insert(self.schema_id, data.clone());
+
+            //Increment schema id
+            self.schema_id += 1;
+
+            //Emit event
+            log!("Event: SchemaCreated {{ data: {:?} }}", data);
         }
 
-        // / # Message to store a Proof of Signature.
-        // /
-        // / This function stores a Proof of Signature along with its signature and validates the signature and message.
-        // / If the data is valid, it is stored in the contract, and relevant mappings are updated.
-        // /
-        // / # Arguments
-        // /
-        // / * `data` - SignedProofOfSignature struct containing the proof of signature data and its signature.
+        /// # Attests to a specified schema with the provided attestation data.
+        ///   The Attestation object containing information about the attestation being made.
+        #[payable]
+        pub fn store_attestation(&mut self, data: Attestation, caller: Vec<u8>) {
+            let caller_key = PublicKey::from_bytes(&caller).unwrap();
+
+            const ZERO_ADDRESS: [u8; 32] = [0u8; 32]; // Define zero address
+
+            let s = self.get_schema(data.schema_id);
+
+            // Validate the data
+            data.validate(s, caller_key);
+
+            // Store attestation
+            self.attestations.insert(self.schema_id, data.clone());
+
+            // Store attestation for user / signatories
+            if data.recipient != ZERO_ADDRESS {
+                let recipient: Vec<[u8; 32]> = vec![data.recipient]; // Wrap the recipient in a Vec
+                self.store_user_attestation(recipient, data.clone());
+            }
+            self.store_user_attestation(data.signatories.clone(), data.clone());
+
+            //Increment schema id
+            self.attestation_id += 1;
+
+            //Emit event
+            log!("Event: AttestationCreated {{ data: {:?} }}", data);
+        }
+
+        /// # Revokes an existing attestation.
+        ///   a_id The ID of the attestation to be revoked.
+        #[payable]
+        pub fn store_revoke(&mut self, a_id: u128, caller: Vec<u8>) {
+            let caller_key = PublicKey::from_bytes(&caller).unwrap();
+
+            const ZERO_ADDRESS: [u8; 32] = [0u8; 32]; // Define zero address
+
+            let mut a = self.get_attestation(a_id);
+            let s = self.get_schema(a.schema_id);
+
+            // Validate revoke
+            a.validate_revoke(s, caller_key);
+
+            // modify store revoke status
+            a.revoked_at = env::block_timestamp().try_into().unwrap();
+            a.is_revoked = true;
+
+            // Update the user attestation by removing the previous entry
+            if let Some(user_attestations) = self.user_attestation.get_mut(&a.schema_id) {
+                // Remove the existing attestation for the caller
+                if let Some(attestations) = user_attestations.get_mut(&a.recipient) {
+                    attestations.retain(|att| att.attestation_id != a_id); // Remove the specific attestation
+                }
+            }
+
+            // Add the modified attestation back to the hashmap
+            self.user_attestation
+                .entry(a.schema_id)
+                .or_insert_with(HashMap::new)
+                .entry(a.recipient)
+                .or_insert_with(Vec::new)
+                .push(a.clone()); // Push the updated attestation
+
+            //Emit event
+            log!("Event: Revoked {{ attestation: {:?} }}", a);
+        }
+
         // #[payable]
-        // pub fn store_proof_of_signature(&mut self, data: ProofOfSignature) {
+        // pub fn store_pos(&mut self, data: ProofOfSignature, caller: Vec<u8>) {
+        //     let caller_key = PublicKey::from_bytes(&caller).unwrap();
+
         //     assert!(
-        //         recover(
-        //             &self.domain.clone(),
-        //             &data.message,
-        //             &data.signature.clone().try_into().expect("bad signature")
-        //         )
-        //         .expect("can't recover signer")
-        //             == data.message.signer,
-        //         "Invalid signature"
+        //         self.signed_attestation
+        //             .get(&data.attestation_id)
+        //             .and_then(|map| map.get(&caller))
+        //             .map_or(false, |&v| v),
+        //         "Attestation already signed by caller."
         //     );
+
+        //     let mut a = self.get_attestation(data.attestation_id);
+        //     let s = self.get_schema(a.schema_id);
 
         //     // Validate the data
-        //     assert!(
-        //         self.validate_signed_proof_of_signature(&data),
-        //         "Invalid message"
+        //     data.validate(a, s, caller_key);
+
+        //     // Store the ProofOfSignature
+        //     self.pos
+        //         .entry(data.attestation_id)
+        //         .or_insert_with(Vec::new)
+        //         .push(data.clone());
+
+        //     let proofs = self.get_proof_of_signature(a.attestation_id);
+        //     if a.signatories.len() == proofs.len() {
+        //         self.store_poa(a)
+        //     }
+
+        //     // Mark the attestation as signed by the caller
+        //     self.signed_attestation
+        //         .entry(data.attestation_id)
+        //         .or_insert_with(HashMap::new)
+        //         .insert(caller, true);
+
+        //     log!(
+        //         "Event: ProofOfSignatureStored {{pos: {:?} }} ",
+        //         data.attestation_id
         //     );
-
-        //     // Store
-        //     self.posis.insert(data.proof_cid.clone(), data.clone());
-
-        //     // Update proof to signer mapping
-        //     self.proof2signer
-        //         .insert(data.proof_cid.clone(), data.message.signer);
-
-        //     log!("Event: NewProofOfSignature {{ data: {:?} }}", data);
         // }
 
-        // / # Message to store a Proof of Agreement.
-        // /
-        // / This function stores a Proof of Agreement and validates the message. If the data is valid, it is stored in the contract.
-        // /
-        // / # Arguments
-        // /
-        // / * `data` - SignedProofOfAgreement struct containing the proof of agreement data.
-        // #[payable]
-        // pub fn store_proof_of_agreement(&mut self, data: ProofOfAgreement) {
-        //     // Validate the data
-        //     assert!(
-        //         self.validate_signed_proof_of_agreement(&data),
-        //         "Invalid message"
-        //     );
-
-        //     // Store
-        //     self.poags.insert(data.proof_cid.clone(), data.clone());
-
-        //     log!("Event: NewProofOfAgreement {{ data: {:?} }}", data);
+        // fn store_poa(&mut self, a: Attestation) {
+        //     let proofs = self.get_proof_of_signature(a.attestation_id);
+        //     // Store attestation
+        //     self.poa.insert(a.attestation_id, proofs.clone());
         // }
 
-        // / # Message to retrieve a Proof of Signature by its CID.
-        // /
-        // / This function retrieves a stored Proof of Signature by its CID.
-        // /
-        // / # Arguments
-        // /
-        // / * `cid` - String representing the CID of the Proof of Signature.
-        // pub fn get_proof_of_signature(&self, cid: String) -> SignedProofOfSignature {
-        //     self.posis.get(&cid).unwrap().clone()
-        // }
+        fn store_user_attestation(&mut self, users: Vec<[u8; 32]>, data: Attestation) {
+            for user in users {
+                // Get or create the outer entry for the attestation ID
+                let user_attestations = self
+                    .user_attestation
+                    .entry(data.schema_id)
+                    .or_insert_with(HashMap::new);
 
-        // / # Message to retrieve a Proof of Agreement by its CID.
-        // /
-        // / This function retrieves a stored Proof of Agreement by its CID.
-        // /
-        // / # Arguments
-        // /
-        // / * `cid` - String representing the CID of the Proof of Agreement.\
-        // pub fn get_proof_of_agreement(&self, cid: String) -> SignedProofOfAgreement {
-        //     self.poags.get(&cid).unwrap().clone()
-        // }
+                let recipient_attestations = user_attestations
+                    .entry(user) // This is now the inner HashMap
+                    .or_insert_with(Vec::new); // Create a new Vec if it doesn’t exist
 
-        // / # Validates a signed Proof-of-Signature message.
-        // /
-        // / This function performs various checks on the provided `SignedProofOfSignature` data to ensure its validity.
-        // /
-        // / # Arguments
-        // /
-        // / * `data` - SignedProofOfSignature struct representing the signed proof.
-        // /
-        // / # Returns
-        // /
-        // /// Returns `true` if the validation passes, otherwise raises assertions.
-        // pub fn validate_signed_proof_of_signature(&self, data: &SignedProofOfSignature) -> bool {
-        //     assert!(
-        //         data.proof_cid.len() == Self::IPFS_CID_LENGTH,
-        //         "Invalid proof CID"
-        //     );
-        //     assert!(
-        //         data.message.name == "Proof-of-Signature",
-        //         "Invalid proof name"
-        //     );
+                // Finally, push the attestation data into the Vec
+                recipient_attestations.push(data.clone()); // Ensure to clone if you want to retain the original data
+            }
+        }
 
-        //     let i: usize = (*self
-        //         .poau_signers_idx
-        //         .get(&(data.message.authority_cid.clone(), data.message.signer))
-        //         .unwrap())
-        //     .try_into()
-        //     .expect("Index conversion failed");
-        //     assert!(
-        //         self.poaus
-        //             .get(&data.message.authority_cid)
-        //             .unwrap()
-        //             .message
-        //             .signers[i]
-        //             .addr
-        //             == data.message.signer,
-        //         "Invalid signer"
-        //     );
+        pub fn get_schema(&self, schema_id: u128) -> Schema {
+            self.schemas.get(&schema_id).unwrap().clone()
+        }
 
-        //     true
-        // }
+        pub fn get_attestation(&self, attestation_id: u128) -> Attestation {
+            self.attestations.get(&attestation_id).unwrap().clone()
+        }
 
-        // / # Validates a signed Proof-of-Agreement message.
-        // /
-        // / This function performs various checks on the provided `SignedProofOfAgreement` data to ensure its validity.
-        // /
-        // / # Arguments
-        // /
-        // / * `data` - SignedProofOfAgreement struct representing the signed proof.
-        // /
-        // / # Returns
-        // /
-        // / Returns `true` if the validation passes, otherwise raises assertions.
-        //     pub fn validate_signed_proof_of_agreement(&self, data: &SignedProofOfAgreement) -> bool {
-        //         assert!(
-        //             data.proof_cid.len() == Self::IPFS_CID_LENGTH,
-        //             "Invalid proof CID"
-        //         );
-        //         assert!(
-        //             self.poaus
-        //                 .get(&data.message.authority_cid)
-        //                 .unwrap()
-        //                 .message
-        //                 .name
-        //                 == "Proof-of-Authority",
-        //             "Invalid Proof-of-Authority name"
-        //         );
-        //         assert!(
-        //             self.poaus
-        //                 .get(&data.message.authority_cid)
-        //                 .unwrap()
-        //                 .message
-        //                 .signers
-        //                 .len()
-        //                 == data.message.signature_cids.len(),
-        //             "Invalid Proofs-of-Signatures length"
-        //         );
+        pub fn get_proof_of_signature(&self, attestation_id: u128) -> Vec<ProofOfSignature> {
+            self.pos.get(&attestation_id).unwrap().clone()
+        }
 
-        //         for signature_cid in data.message.signature_cids.iter() {
-        //             let idx: usize = (*self
-        //                 .poau_signers_idx
-        //                 .get(&(
-        //                     data.message.authority_cid.clone(),
-        //                     self.posis.get(signature_cid).unwrap().message.signer,
-        //                 ))
-        //                 .unwrap())
-        //             .try_into()
-        //             .expect("Index conversion failed");
-        //             assert!(
-        //                 self.poaus
-        //                     .get(&data.message.authority_cid)
-        //                     .unwrap()
-        //                     .message
-        //                     .signers[idx]
-        //                     .addr
-        //                     == self.posis.get(signature_cid).unwrap().message.signer,
-        //                 "Invalid Proofs-of-Signature signer"
-        //             );
-        //         }
-
-        //         true
+        pub fn get_user_attestations(&self, schema_id: u128, caller: [u8; 32]) -> Vec<Attestation> {
+            self.user_attestation
+                .get(&schema_id) // Get the map for schema_id
+                .and_then(|caller_map| caller_map.get(&caller)) // Get the attestations for caller
+                .cloned() // Clone the vector (Option<Vec<Attestation>>)
+                .unwrap_or_else(Vec::new) // If None, return an empty Vec
+        }
     }
 }
 
-//     #[cfg(test)]
-//     mod tests {
-//         use super::*;
-//         use hex::FromHex;
+#[cfg(test)]
+mod test {
+    use super::*;
+    use daosign_app::DAOSignApp;
+    use daosign_schema::{Schema, SchemaDefinition, SchemaMetadata, SignatoryPolicy};
+    use ed25519_dalek::{Keypair, Signature, Signer};
+    use rand::rngs::OsRng;
 
-//         use daosign_eip712::EIP712Domain;
-//         use daosign_proof_of_agreement::ProofOfAgreement;
-//         use daosign_proof_of_authority::{ProofOfAuthority, Signer};
-//         use daosign_proof_of_signature::ProofOfSignature;
+    fn create_signer() -> Keypair {
+        let mut csprng = OsRng {};
+        Keypair::generate(&mut csprng)
+    }
 
-//         fn store_proof_of_authority(instance: &mut DAOSignApp) {
-//             let timestamp: u64 = 1711498247;
-//             let from = <[u8; 20]>::from_hex("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266").unwrap();
-//             let signature = <[u8; 65]>::from_hex("ef1e21a1e3d2c5fc8da61aaf4162dbd7480c7b9651fd564c4d7f2425d487279021ac4016d43ddad887f9951cf47e41003826bf6a9bcffd0824946a88b9158abd1c").unwrap();
-//             let proof_cid = String::from("ProofOfAuthority proof cid                    ");
+    fn sign_transaction(message: &[u8], signer: &Keypair) -> Signature {
+        signer.sign(message)
+    }
 
-//             instance.store_proof_of_authority(SignedProofOfAuthority {
-//                 message: ProofOfAuthority {
-//                     name: String::from("Proof-of-Authority"),
-//                     from,
-//                     agreement_cid: String::from("agreement file cid                            "),
-//                     signers: Vec::from([Signer {
-//                         addr: from,
-//                         metadata: String::from("some metadata"),
-//                     }]),
-//                     timestamp,
-//                     metadata: String::from("proof metadata"),
-//                 },
-//                 signature: signature.to_vec(),
-//                 proof_cid: proof_cid.clone(),
-//             });
-//         }
+    // Create DAOSignApp instance for testing
+    fn create_daosign_app() -> DAOSignApp {
+        DAOSignApp::new()
+    }
 
-//         fn store_proof_of_signature(instance: &mut DAOSignApp) {
-//             let timestamp: u64 = 1711498247;
-//             let signer = <[u8; 20]>::from_hex("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266").unwrap();
-//             let signature = <[u8; 65]>::from_hex("461d21a35edf1a3d926b1f9af11738211c846e450830a205e6d1801288195afd09c45e8bbde61fbf6a8e655df3133d9a8ec6495b1987abb77862d8beaefe12811c").unwrap();
-//             let proof_cid = String::from("ProofOfSignature proof cid                    ");
+    fn create_schema(creator: [u8; 32]) -> Schema {
+        let schema_data = Schema {
+            schema_id: 0,
+            metadata: SchemaMetadata {
+                name: "DaoSign Vacancy".to_string(),
+                description: "Blockchain developer vacancy".to_string(),
+                attestation_type: "agreement".to_string(),
+                nft_name: "nft_name".to_string(),
+                nft_symbol: "nft_symbol".to_string(),
+                creator,
+                created_at: 1,
+                is_nft: true,
+                is_public: false,
+                is_revokable: true,
+                expire_in: 0,
+            },
+            signatory_policy: vec![
+                SignatoryPolicy {
+                    operator: 0x01,
+                    signatory_description: "role".to_string(),
+                    required_schema_id: vec![0],
+                },
+                SignatoryPolicy {
+                    operator: 0x01,
+                    signatory_description: "role1".to_string(),
+                    required_schema_id: vec![0],
+                },
+            ],
+            schema_definition: vec![
+                SchemaDefinition {
+                    definition_type: "string".to_string(),
+                    definition_name: "vacancies".to_string(),
+                },
+                SchemaDefinition {
+                    definition_type: "uint256".to_string(),
+                    definition_name: "salary".to_string(),
+                },
+            ],
+            signature: vec![0; 65],
+        };
+        schema_data
+    }
 
-//             instance.store_proof_of_signature(SignedProofOfSignature {
-//                 message: ProofOfSignature {
-//                     name: String::from("Proof-of-Signature"),
-//                     signer,
-//                     authority_cid: String::from("ProofOfAuthority proof cid                    "),
-//                     timestamp,
-//                     metadata: String::from("proof metadata"),
-//                 },
-//                 signature: signature.to_vec(),
-//                 proof_cid: proof_cid.clone(),
-//             });
-//         }
+    #[test]
+    fn test_store_schema() {
+        let mut app = create_daosign_app();
+        let caller = create_signer().public.to_bytes();
+        let schema = create_schema(caller);
 
-//         fn store_proof_of_agreement(instance: &mut DAOSignApp) {
-//             let timestamp: u64 = 1711498247;
-//             let signature = <[u8; 65]>::from_hex("b05b5e2c46e33e744d474227755f4e6cf8308d75347f67107e3514a9ff7247d93178e100540a2778693459842fd0fedb99f6d17a8b50988ad0d2a634eb164e691b").unwrap();
-//             let proof_cid = String::from("ProofOfAgreement proof cid                    ");
+        // Store schema
+        app.store_schema(schema.clone(), caller);
 
-//             instance.store_proof_of_agreement(SignedProofOfAgreement {
-//                 message: ProofOfAgreement {
-//                     authority_cid: String::from("ProofOfAuthority proof cid                    "),
-//                     signature_cids: Vec::from([String::from(
-//                         "ProofOfSignature proof cid                    ",
-//                     )]),
-//                     timestamp,
-//                     metadata: String::from("proof metadata"),
-//                 },
-//                 signature: signature.to_vec(),
-//                 proof_cid: proof_cid.clone(),
-//             });
-//         }
+        // Verify schema is stored
+        assert_eq!(app.schemas.len(), 1);
+        assert_eq!(app.schemas.get(&0), Some(&schema));
+    }
 
-//         #[test]
-//         fn test_store_proof_of_authority() {
-//             let mut instance = DAOSignApp::new(EIP712Domain {
-//                 name: "daosign".into(),
-//                 version: "0.1.0".into(),
-//                 chain_id: 1,
-//                 verifying_contract: [0; 20].into(),
-//             });
-//             let timestamp: u64 = 1711498247;
-//             let from = <[u8; 20]>::from_hex("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266").unwrap();
-//             let signature = <[u8; 65]>::from_hex("ef1e21a1e3d2c5fc8da61aaf4162dbd7480c7b9651fd564c4d7f2425d487279021ac4016d43ddad887f9951cf47e41003826bf6a9bcffd0824946a88b9158abd1c").unwrap();
-//             let proof_cid = String::from("ProofOfAuthority proof cid                    ");
+    #[test]
+    fn test_schema_unauthorized_schema_creator() {}
 
-//             store_proof_of_authority(&mut instance);
+    #[test]
+    fn test_schema_empty_schema_definition() {}
 
-//             assert_eq!(instance.poaus.get(&proof_cid).unwrap().signature, signature);
-//             assert_eq!(
-//                 instance.poaus.get(&proof_cid).unwrap().proof_cid,
-//                 proof_cid.clone()
-//             );
-//             assert_eq!(
-//                 instance.poaus.get(&proof_cid).unwrap().message.name,
-//                 String::from("Proof-of-Authority")
-//             );
-//             assert_eq!(instance.poaus.get(&proof_cid).unwrap().message.from, from);
-//             assert_eq!(
-//                 instance
-//                     .poaus
-//                     .get(&proof_cid)
-//                     .unwrap()
-//                     .message
-//                     .agreement_cid,
-//                 String::from("agreement file cid                            ")
-//             );
-//             assert_eq!(
-//                 instance
-//                     .poaus
-//                     .get(&proof_cid)
-//                     .unwrap()
-//                     .message
-//                     .signers
-//                     .len(),
-//                 1
-//             );
-//             assert_eq!(
-//                 instance.poaus.get(&proof_cid).unwrap().message.signers[0].addr,
-//                 from
-//             );
-//             assert_eq!(
-//                 instance.poaus.get(&proof_cid).unwrap().message.signers[0].metadata,
-//                 String::from("some metadata")
-//             );
-//             assert_eq!(
-//                 instance.poaus.get(&proof_cid).unwrap().message.timestamp,
-//                 timestamp
-//             );
-//             assert_eq!(
-//                 instance.poaus.get(&proof_cid).unwrap().message.metadata,
-//                 String::from("proof metadata")
-//             );
-//         }
+    #[test]
+    fn test_store_attestation() {}
 
-//         #[test]
-//         fn test_store_proof_of_signature() {
-//             let mut instance = DAOSignApp::new(EIP712Domain {
-//                 name: "daosign".into(),
-//                 version: "0.1.0".into(),
-//                 chain_id: 1,
-//                 verifying_contract: [0; 20].into(),
-//             });
-//             let timestamp: u64 = 1711498247;
-//             let signer = <[u8; 20]>::from_hex("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266").unwrap();
-//             let signature = <[u8; 65]>::from_hex("461d21a35edf1a3d926b1f9af11738211c846e450830a205e6d1801288195afd09c45e8bbde61fbf6a8e655df3133d9a8ec6495b1987abb77862d8beaefe12811c").unwrap();
-//             let proof_cid = String::from("ProofOfSignature proof cid                    ");
+    #[test]
+    fn test_attestation_schema_does_not_exist() {}
 
-//             store_proof_of_authority(&mut instance);
-//             store_proof_of_signature(&mut instance);
+    #[test]
+    fn test_attestation_unauthorized_attestator() {}
 
-//             let data = SignedProofOfSignature {
-//                 message: ProofOfSignature {
-//                     name: String::from("Proof-of-Signature"),
-//                     signer,
-//                     authority_cid: String::from("ProofOfAuthority proof cid                    "),
-//                     timestamp,
-//                     metadata: String::from("proof metadata"),
-//                 },
-//                 signature: signature.to_vec(),
-//                 proof_cid: proof_cid.clone(),
-//             };
-//             instance.store_proof_of_signature(data.clone());
+    #[test]
+    fn test_attestation_schema_already_expired() {}
 
-//             assert_eq!(instance.posis.get(&proof_cid).unwrap().signature, signature);
-//             assert_eq!(
-//                 instance.posis.get(&proof_cid).unwrap().proof_cid,
-//                 proof_cid.clone()
-//             );
+    #[test]
+    fn test_attestation_length_mismatch() {}
 
-//             assert_eq!(
-//                 instance.posis.get(&proof_cid).unwrap().message.name,
-//                 String::from("Proof-of-Signature")
-//             );
-//             assert_eq!(
-//                 instance.posis.get(&proof_cid).unwrap().message.signer,
-//                 signer
-//             );
-//             assert_eq!(
-//                 instance
-//                     .posis
-//                     .get(&proof_cid)
-//                     .unwrap()
-//                     .message
-//                     .authority_cid,
-//                 String::from("ProofOfAuthority proof cid                    ")
-//             );
-//             assert_eq!(
-//                 instance.posis.get(&proof_cid).unwrap().message.timestamp,
-//                 timestamp
-//             );
-//             assert_eq!(
-//                 instance.posis.get(&proof_cid).unwrap().message.metadata,
-//                 String::from("proof metadata")
-//             );
-//         }
+    #[test]
+    fn test_attestation_name_mismatch() {}
 
-//         #[test]
-//         fn test_store_proof_of_agreement() {
-//             let mut instance = DAOSignApp::new(EIP712Domain {
-//                 name: "daosign".into(),
-//                 version: "0.1.0".into(),
-//                 chain_id: 1,
-//                 verifying_contract: [0; 20].into(),
-//             });
-//             let timestamp: u64 = 1711498247;
-//             let signature = <[u8; 65]>::from_hex("b05b5e2c46e33e744d474227755f4e6cf8308d75347f67107e3514a9ff7247d93178e100540a2778693459842fd0fedb99f6d17a8b50988ad0d2a634eb164e691b").unwrap();
-//             let proof_cid = String::from("ProofOfAgreement proof cid                    ");
+    #[test]
+    fn test_attestation_type_mismatch() {}
 
-//             store_proof_of_authority(&mut instance);
-//             store_proof_of_signature(&mut instance);
-//             store_proof_of_agreement(&mut instance);
+    #[test]
+    fn test_store_revoke() {}
 
-//             assert_eq!(instance.poags.get(&proof_cid).unwrap().signature, signature);
-//             assert_eq!(
-//                 instance.poags.get(&proof_cid).unwrap().proof_cid,
-//                 proof_cid.clone()
-//             );
+    #[test]
+    fn test_revoke_attestation_does_not_exist() {}
 
-//             assert_eq!(
-//                 instance
-//                     .poags
-//                     .get(&proof_cid)
-//                     .unwrap()
-//                     .message
-//                     .authority_cid,
-//                 String::from("ProofOfAuthority proof cid                    ")
-//             );
-//             assert_eq!(
-//                 instance
-//                     .poags
-//                     .get(&proof_cid)
-//                     .unwrap()
-//                     .message
-//                     .signature_cids
-//                     .len(),
-//                 1
-//             );
-//             assert_eq!(
-//                 instance
-//                     .poags
-//                     .get(&proof_cid)
-//                     .unwrap()
-//                     .message
-//                     .signature_cids[0],
-//                 String::from("ProofOfSignature proof cid                    ")
-//             );
-//             assert_eq!(
-//                 instance.poags.get(&proof_cid).unwrap().message.timestamp,
-//                 timestamp
-//             );
-//             assert_eq!(
-//                 instance.poags.get(&proof_cid).unwrap().message.metadata,
-//                 String::from("proof metadata")
-//             );
-//         }
+    #[test]
+    fn test_revoke_unauthorized_attestator() {}
 
-//         #[test]
-//         fn test_get_proof_of_authority() {
-//             let mut instance = DAOSignApp::new(EIP712Domain {
-//                 name: "daosign".into(),
-//                 version: "0.1.0".into(),
-//                 chain_id: 1,
-//                 verifying_contract: [0; 20].into(),
-//             });
-//             let timestamp: u64 = 1711498247;
-//             let from = <[u8; 20]>::from_hex("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266").unwrap();
-//             let signature = <[u8; 65]>::from_hex("ef1e21a1e3d2c5fc8da61aaf4162dbd7480c7b9651fd564c4d7f2425d487279021ac4016d43ddad887f9951cf47e41003826bf6a9bcffd0824946a88b9158abd1c").unwrap();
-//             let proof_cid = String::from("ProofOfAuthority proof cid                    ");
-//             store_proof_of_authority(&mut instance);
+    #[test]
+    fn test_store_pos_and() {}
 
-//             let proof = instance.get_proof_of_authority(proof_cid.clone());
+    #[test]
+    fn test_store_pos_or() {}
 
-//             assert_eq!(proof.signature, signature);
-//             assert_eq!(proof.proof_cid, proof_cid.clone());
-//             assert_eq!(proof.message.name, String::from("Proof-of-Authority"));
-//             assert_eq!(proof.message.from, from);
-//             assert_eq!(
-//                 proof.message.agreement_cid,
-//                 String::from("agreement file cid                            ")
-//             );
-//             assert_eq!(proof.message.signers.len(), 1);
-//             assert_eq!(proof.message.signers[0].addr, from);
-//             assert_eq!(
-//                 proof.message.signers[0].metadata,
-//                 String::from("some metadata")
-//             );
-//             assert_eq!(proof.message.timestamp, timestamp);
-//             assert_eq!(proof.message.metadata, String::from("proof metadata"));
-//         }
+    #[test]
+    fn test_store_pos_not() {}
 
-//         #[test]
-//         fn test_get_proof_of_signature() {
-//             let mut instance = DAOSignApp::new(EIP712Domain {
-//                 name: "daosign".into(),
-//                 version: "0.1.0".into(),
-//                 chain_id: 1,
-//                 verifying_contract: [0; 20].into(),
-//             });
-//             let timestamp: u64 = 1711498247;
-//             let signer = <[u8; 20]>::from_hex("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266").unwrap();
-//             let signature = <[u8; 65]>::from_hex("461d21a35edf1a3d926b1f9af11738211c846e450830a205e6d1801288195afd09c45e8bbde61fbf6a8e655df3133d9a8ec6495b1987abb77862d8beaefe12811c").unwrap();
-//             let proof_cid = String::from("ProofOfSignature proof cid                    ");
+    #[test]
+    fn test_pos_invalid_signatory_address() {}
 
-//             store_proof_of_authority(&mut instance);
-//             store_proof_of_signature(&mut instance);
+    #[test]
+    fn test_pos_unsupported_operator() {}
 
-//             let proof = instance.get_proof_of_signature(proof_cid.clone());
+    #[test]
+    fn test_pos_insufficient_attestations() {}
 
-//             assert_eq!(proof.signature, signature);
-//             assert_eq!(proof.proof_cid, proof_cid.clone());
+    #[test]
+    fn test_store_poa_identity() {}
 
-//             assert_eq!(proof.message.name, String::from("Proof-of-Signature"));
-//             assert_eq!(proof.message.signer, signer);
-//             assert_eq!(
-//                 proof.message.authority_cid,
-//                 String::from("ProofOfAuthority proof cid                    ")
-//             );
-//             assert_eq!(proof.message.timestamp, timestamp);
-//             assert_eq!(proof.message.metadata, String::from("proof metadata"));
-//         }
+    #[test]
+    fn test_poa_with_one_signatory() {}
 
-//         #[test]
-//         fn test_get_proof_of_agreement() {
-//             let mut instance = DAOSignApp::new(EIP712Domain {
-//                 name: "daosign".into(),
-//                 version: "0.1.0".into(),
-//                 chain_id: 1,
-//                 verifying_contract: [0; 20].into(),
-//             });
-//             let timestamp: u64 = 1711498247;
-//             let signature = <[u8; 65]>::from_hex("b05b5e2c46e33e744d474227755f4e6cf8308d75347f67107e3514a9ff7247d93178e100540a2778693459842fd0fedb99f6d17a8b50988ad0d2a634eb164e691b").unwrap();
-//             let proof_cid = String::from("ProofOfAgreement proof cid                    ");
-
-//             store_proof_of_authority(&mut instance);
-//             store_proof_of_signature(&mut instance);
-//             store_proof_of_agreement(&mut instance);
-
-//             let proof = instance.get_proof_of_agreement(proof_cid.clone());
-
-//             assert_eq!(proof.signature, signature);
-//             assert_eq!(proof.proof_cid, proof_cid.clone());
-
-//             assert_eq!(
-//                 proof.message.authority_cid,
-//                 String::from("ProofOfAuthority proof cid                    ")
-//             );
-//             assert_eq!(proof.message.signature_cids.len(), 1);
-//             assert_eq!(
-//                 proof.message.signature_cids[0],
-//                 String::from("ProofOfSignature proof cid                    ")
-//             );
-//             assert_eq!(proof.message.timestamp, timestamp);
-//             assert_eq!(proof.message.metadata, String::from("proof metadata"));
-//         }
-//     }
-// }
+    #[test]
+    fn test_pos_with_two_signatories() {}
+}

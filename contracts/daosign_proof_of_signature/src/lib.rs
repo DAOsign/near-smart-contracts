@@ -1,126 +1,157 @@
-use daosign_eip712::{
-    eip712_domain_type, EIP712Domain, EIP712Message, EIP712PropertyType, Packable,
-};
+use daosign_attestation::Attestation;
+use daosign_ed25519::recover;
+use daosign_schema::{Schema, SignatoryPolicy};
+use ed25519_dalek::{PublicKey, Signature};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-// use near_sdk::near_bindgen;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-
-use schemars::JsonSchema;
-
-static PROOF_OF_SIGNATURE_TYPEHASH: [u8; 32] = [
-    121, 27, 217, 70, 217, 77, 222, 106, 102, 69, 3, 201, 6, 50, 65, 200, 192, 203, 113, 79, 199,
-    225, 197, 114, 141, 23, 169, 246, 181, 166, 163, 38,
-];
-
-fn proof_of_signature_type() -> Vec<EIP712PropertyType> {
-    vec![
-        EIP712PropertyType {
-            name: String::from("attestation_id"),
-            r#type: String::from("uint256"),
-        },
-        EIP712PropertyType {
-            name: String::from("creator"),
-            r#type: String::from("address"),
-        },
-    ]
-}
+use serde_json;
 
 /// ProofOfSignature struct representing the Proof-of-Signature parameters.
 // #[near_bindgen]
-#[derive(
-    BorshDeserialize,
-    BorshSerialize,
-    Serialize,
-    Deserialize,
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    JsonSchema,
-)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct ProofOfSignature {
     pub attestation_id: u128,
-    pub creator: [u8; 20],
+    pub creator: String,
     pub created_at: u32,
     pub signature: Vec<u8>,
 }
 
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct ProofOfSignatureMessage {
+    pub attestation_id: u128,
+    pub creator: String,
+}
+
 impl ProofOfSignature {
-    pub fn to_eip712_message(&self, domain: &EIP712Domain) -> EIP712Message<ProofOfSignature> {
-        EIP712Message {
-            types: HashMap::from([
-                (String::from("EIP712Domain"), eip712_domain_type()),
-                (String::from("ProofOfSignature"), proof_of_signature_type()),
-            ]),
-            domain: domain.clone(),
-            primary_type: String::from("ProofOfSignature"),
-            message: self.clone(),
+    pub fn to_ed25519_message(&self) -> Vec<u8> {
+        let pos = ProofOfSignatureMessage {
+            attestation_id: self.attestation_id,
+            creator: self.creator.clone(),
+        };
+        // Serialize the message to JSON and convert to bytes
+        serde_json::to_vec(&pos).expect("Failed to serialize message") // directly return the serialized vector
+    }
+
+    pub fn validate(&self, a: Attestation, s: Schema, caller: PublicKey) {
+        assert!(a.is_revoked, "attestation revoked.");
+
+        assert!(
+            is_signatory(a.signatories, caller),
+            "Invalid signatory address."
+        );
+
+        // validate_signatory_policy(self, s, caller);
+
+        //TODO: modify to send Signature obj into recover
+        let signature = Signature::from_bytes(&self.signature).expect("Invalid signature");
+
+        assert!(
+            recover(caller, signature, &self.to_ed25519_message()),
+            "invalid signature"
+        );
+    }
+}
+fn is_signatory(signatories: Vec<[u8; 32]>, caller: PublicKey) -> bool {
+    let res: bool = false;
+    for signator in signatories {
+        let signator_key = PublicKey::from_bytes(&signator).unwrap();
+        if signator_key == caller {
+            res == true;
         }
     }
+    res
 }
 
-impl Packable for ProofOfSignature {
-    fn pack(&self) -> Vec<u8> {
-        let mut encoded: Vec<u8> = Vec::new();
+// fn validate_signatory_policy(pos: &ProofOfSignature, s: Schema, signer: PublicKey) {
+//     let policy_count = s.signatory_policy.len();
 
-        // 1. Add the type hash at the beginning
-        encoded.extend_from_slice(&PROOF_OF_SIGNATURE_TYPEHASH);
+//     if policy_count == 0 {
+//         return;
+//     }
 
-        // 2. Pack attestation_id
-        encoded.extend_from_slice(&self.attestation_id.to_be_bytes());
+//     for policy in s.signatory_policy {
+//         let is_satisfied = is_policy_satisfied(pos.clone(), policy, signer);
+//         assert!(is_satisfied, "insufficient attestations.")
+//     }
+// }
 
-        // 3. Pack creator address
-        encoded.extend_from_slice(&self.creator);
+// fn is_policy_satisfied(pos: ProofOfSignature, policy: SignatoryPolicy, signer: PublicKey) -> bool {
+//     let required_attestation_count = policy.required_schema_id.len();
+//     if required_attestation_count == 0 {
+//         return true;
+//     }
 
-        // Return the encoded data
-        encoded
-    }
-}
+//     let mut result = false;
+//     for (i, &schema_id) in policy.required_schema_id.iter().enumerate() {
+//         let has_attestation = get_user_attestations().len() > 0;
+
+//         match policy.operator {
+//             0x01 => {
+//                 if i == 0 {
+//                     result = true;
+//                 }
+//                 result = result && has_attestation;
+//                 if !result {
+//                     break;
+//                 }
+//             }
+//             0x02 => {
+//                 result = result || has_attestation;
+//                 if result {
+//                     break;
+//                 }
+//             }
+//             0x03 => {
+//                 if i == 0 {
+//                     result = true;
+//                 }
+//                 result = result && !has_attestation;
+//                 if !result {
+//                     break;
+//                 }
+//             }
+//             _ => panic!("Unsupported operator"),
+//         }
+//     }
+
+//     result
+// }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use daosign_eip712::sha3;
-    use hex::FromHex;
+    use daosign_ed25519::recover;
+    use ed25519_dalek::{Keypair, Signature, Signer};
+    use rand::rngs::OsRng;
 
-    const SOME_ADDR: [u8; 20] = [
-        243, 159, 214, 229, 26, 173, 136, 246, 244, 206, 106, 184, 130, 114, 121, 207, 255, 185,
-        34, 102,
-    ];
+    fn create_signer() -> Keypair {
+        let mut csprng = OsRng {};
+        Keypair::generate(&mut csprng)
+    }
 
-    fn domain() -> EIP712Domain {
-        EIP712Domain {
-            name: String::from("daosign"),
-            version: String::from("0.1.0")
-        }
+    fn sign_transaction(message: &[u8], signer: &Keypair) -> Signature {
+        signer.sign(message)
     }
 
     #[test]
-    fn check_typehash() {
-        assert_eq!(
-            PROOF_OF_SIGNATURE_TYPEHASH,
-            sha3(b"ProofOfSignature(uint256 attestation_id,address creator)")
-        );
-    }
+    fn check_pos() {
+        // Create a signer (keypair)
+        let signer = create_signer();
 
-    #[test]
-    fn check_type() {
-        let message = ProofOfSignature {
-            attestation_id: 0,      // Default ID value
-            creator: SOME_ADDR,     // The creator's address
+        let pos = ProofOfSignature {
+            attestation_id: 0,             // Default ID value
+            creator: hex::encode([0; 20]), // The creator's address
             created_at: 0, // Default creation timestamp (you can set this to the current time if desired)
             signature: vec![0; 65], // Placeholder for the signature, e.g., 65 bytes for some types (e.g., ECDSA)
         };
+        // Serialize the schema to message and sign it
+        let message = pos.to_ed25519_message();
+        let signature = sign_transaction(&message, &signer);
 
-        let expected_hash: [u8; 32] = <[u8; 32]>::from_hex(
-            "2728e05cad9264c189d6efc92cd42288f9ac0d77454d603a24558c35c2192c62",
-        )
-        .unwrap();
-        assert_eq!(expected_hash, daosign_eip712::hash(&message));
+        // Verify the signature
+        let success = recover(signer.public, signature, &message);
 
-        let signature = <[u8; 65]>::from_hex("77d2146c392a9bbc8ac4a6219f54fa09f26f717acab0334de1430aee8182692e2b546435d1b93e265516cb03375d758af9d9e262d05291e8f00fcd8e70efdc721b").unwrap();
-        let recovered = daosign_eip712::recover(&domain(), &message, &signature);
-        assert_eq!(SOME_ADDR, recovered.unwrap())
+        // Assert that the signature is valid
+        assert!(success, "The signature should be valid.");
     }
 }

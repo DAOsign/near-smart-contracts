@@ -1,213 +1,163 @@
-use daosign_eip712::{
-    eip712_domain_type, sha3, EIP712Domain, EIP712Message, EIP712PropertyType, Packable,
+use daosign_ed25519::recover;
+use daosign_schema::Schema;
+use ed25519_dalek::{PublicKey, Signature};
+use near_sdk::{
+    borsh::{self, BorshDeserialize, BorshSerialize},
+    env,
 };
-use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-// use near_sdk::near_bindgen;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-
-use schemars::JsonSchema;
-
-//ATTESTATION_TYPE_HASH
-// 0x0a36d53742706ba39b8199d65805e5938e9f5d384d5ee1c5da817c83e782af24
-static ATTESTATION_TYPEHASH: [u8; 32] = [
-    10, 54, 213, 55, 66, 112, 107, 163, 155, 129, 153, 214, 88, 5, 229, 147, 142, 159, 93, 56, 77,
-    94, 225, 197, 218, 129, 124, 131, 231, 130, 175, 36,
-];
-
-//ATTESTATION_RESULT_TYPE_HASH
-// 0x5286ea1618f89486895380f01ab3cc41fe93f50b22a5cb5ea532c2fdedf300ab
-static ATTESTATION_RESULT_TYPEHASH: [u8; 32] = [
-    82, 134, 234, 22, 24, 248, 148, 134, 137, 83, 128, 240, 26, 179, 204, 65, 254, 147, 245, 11,
-    34, 165, 203, 94, 165, 50, 194, 253, 237, 243, 0, 171,
-];
-
-fn attestation_type() -> Vec<EIP712PropertyType> {
-    vec![
-        EIP712PropertyType {
-            name: String::from("attestation_id"),
-            r#type: String::from("uint256"),
-        },
-        EIP712PropertyType {
-            name: String::from("schema_id"),
-            r#type: String::from("uint256"),
-        },
-        EIP712PropertyType {
-            name: String::from("attestation_result"),
-            r#type: String::from("AttestationResult[]"),
-        },
-        EIP712PropertyType {
-            name: String::from("creator"),
-            r#type: String::from("address"),
-        },
-        EIP712PropertyType {
-            name: String::from("recipient"),
-            r#type: String::from("address"),
-        },
-        EIP712PropertyType {
-            name: String::from("created_at"),
-            r#type: String::from("uint32"),
-        },
-        EIP712PropertyType {
-            name: String::from("signatories"),
-            r#type: String::from("address[]"),
-        },
-    ]
-}
+use serde_json;
 
 /// ProofOfSignature struct representing the Proof-of-Signature parameters.
 // #[near_bindgen]
-#[derive(
-    BorshDeserialize,
-    BorshSerialize,
-    Serialize,
-    Deserialize,
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    JsonSchema,
-)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Attestation {
+    pub attestation_id: u128,
+    pub schema_id: u128,
+    pub attestation_result: Vec<AttestationResult>,
+    pub creator: [u8; 32],
+    pub recipient: [u8; 32],
+    pub created_at: u32, // Use String to represent address
+    pub signatories: Vec<[u8; 32]>,
+    pub signature: Vec<u8>,
+    pub is_revoked: bool,
+    pub revoked_at: u32,
+    pub revoke_signature: Vec<u8>,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct AttestationMessage {
     attestation_id: u128,
     schema_id: u128,
     attestation_result: Vec<AttestationResult>,
-    creator: [u8; 20],
-    recipient: [u8; 20],
+    creator: [u8; 32],
+    recipient: [u8; 32],
     created_at: u32, // Use String to represent address
-    signatories: Vec<[u8; 20]>,
-    signature: Vec<u8>,
+    signatories: Vec<[u8; 32]>,
 }
 /// ProofOfSignature struct representing the Proof-of-Signature parameters.
 // #[near_bindgen]
-#[derive(
-    BorshDeserialize,
-    BorshSerialize,
-    Serialize,
-    Deserialize,
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    JsonSchema,
-)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct AttestationResult {
-    attestation_result_type: String,
-    name: String,
-    value: Vec<u8>,
+    pub attestation_result_type: String,
+    pub name: String,
+    pub value: Vec<u8>,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct RevokeMessage {
+    attestation_id: u128,
 }
 
 impl Attestation {
-    pub fn to_eip712_message(&self, domain: &EIP712Domain) -> EIP712Message<Attestation> {
-        EIP712Message {
-            types: HashMap::from([
-                (String::from("EIP712Domain"), eip712_domain_type()),
-                (String::from("Attestation"), attestation_type()),
-            ]),
-            domain: domain.clone(),
-            primary_type: String::from("Attestation"),
-            message: self.clone(),
+    pub fn to_ed25519_message(&self) -> Vec<u8> {
+        let attestaion = AttestationMessage {
+            attestation_id: self.attestation_id,
+            schema_id: self.schema_id,
+            attestation_result: self.attestation_result.clone(),
+            creator: self.creator,
+            recipient: self.recipient,
+            created_at: self.created_at,
+            signatories: self.signatories.clone(),
+        };
+        // Serialize the message to JSON and convert to bytes
+        serde_json::to_vec(&attestaion).expect("Failed to serialize message") // directly return the serialized vector
+    }
+
+    pub fn to_ed25519_message_revoke(&self) -> Vec<u8> {
+        let revoke = RevokeMessage {
+            attestation_id: self.attestation_id,
+        };
+        // Serialize the message to JSON and convert to bytes
+        serde_json::to_vec(&revoke).expect("Failed to serialize message") // directly return the serialized vector
+    }
+
+    pub fn validate(&self, s: Schema, caller: PublicKey) {
+        // Ensure that if the schema is private, the sender is the creator of the attestation.
+        assert!(
+            !s.metadata.is_public && self.creator != caller.to_bytes(),
+            "unauthorized attestator"
+        );
+        // Get the current block timestamp in seconds
+        let current_timestamp = env::block_timestamp();
+
+        // Check if the schema has expired based on its metadata
+        assert!(
+            s.metadata.expire_in != 0
+                && (s.metadata.created_at + s.metadata.expire_in
+                    < current_timestamp.try_into().unwrap()),
+            "schema already expired"
+        );
+
+        // Ensure that the length of attestation results matches the length of the schema definition
+        assert!(
+            self.attestation_result.len() != s.schema_definition.len(),
+            "attestation length mismatch"
+        );
+
+        let mut i = 0;
+        while i < s.schema_definition.len() {
+            // Check that the names match between the schema definition and the attestation result
+            assert!(
+                s.schema_definition[i].definition_name == self.attestation_result[i].name,
+                "attestation name mismatch"
+            );
+            // Check that the types match between the schema definition and the attestation result
+            assert!(
+                s.schema_definition[i].definition_type
+                    == self.attestation_result[i].attestation_result_type,
+                "attestation type mismatch"
+            );
+            i += 1;
         }
-    }
-}
 
-impl Packable for Attestation {
-    fn pack(&self) -> Vec<u8> {
-        let mut encoded: Vec<u8> = Vec::new();
+        //TODO: modify to send Signature obj into recover
+        let signature = Signature::from_bytes(&self.signature).expect("Invalid signature");
 
-        // 1. Add the type hash at the beginning
-        encoded.extend_from_slice(&ATTESTATION_TYPEHASH);
-
-        // 2. Encode attestation_id
-        encoded.extend_from_slice(&self.attestation_id.to_be_bytes());
-
-        // 3. Encode schema_id
-        encoded.extend_from_slice(&self.schema_id.to_be_bytes());
-
-        // 4. Encode attestation results using the new function
-        encoded.extend_from_slice(&sha3(&pack_attestation_result(&self.attestation_result)));
-
-        // 5. Encode creator address
-        encoded.extend_from_slice(&self.creator);
-
-        // 6. Encode recipient address
-        encoded.extend_from_slice(&self.recipient);
-
-        // 7. Encode created_at
-        encoded.extend_from_slice(&self.created_at.to_be_bytes());
-
-        // 8. Encode signatories
-        encoded.extend_from_slice(&pack_signatories(self.signatories.clone()));
-
-        // Return the encoded data
-        encoded
-    }
-}
-
-fn pack_attestation_result(attestation_results: &[AttestationResult]) -> Vec<u8> {
-    let mut encoded: Vec<u8> = Vec::new();
-
-    // 1. Iterate over each AttestationResult and pack its fields
-    for result in attestation_results {
-        // 2. Add the type hash at the beginning
-        encoded.extend_from_slice(&ATTESTATION_RESULT_TYPEHASH);
-
-        // 3. Encode attestation_result_type
-        encoded.extend_from_slice(&sha3(result.attestation_result_type.as_bytes()));
-
-        // 4. Encode name
-        encoded.extend_from_slice(&sha3(result.name.as_bytes()));
-
-        // 5. Encode the value (assumed to be bytes)
-        encoded.extend_from_slice(&result.value);
+        //Check signature
+        assert!(
+            recover(caller, signature, &self.to_ed25519_message()),
+            "invalid signature"
+        );
     }
 
-    // Return the encoded data
-    encoded
-}
+    pub fn validate_revoke(&self, s: Schema, caller: PublicKey) {
+        assert!(!s.metadata.is_revokable, "attestation can't be revoked");
 
-fn pack_signatories(signatories: Vec<[u8; 20]>) -> Vec<u8> {
-    let mut encoded: Vec<u8> = Vec::new();
+        // Check if the sender is the original creator of the attestation before revoking it
+        assert!(self.creator != caller.to_bytes(), "unauthorized attestator");
 
-    // 1. Iterate over each signatory and pack its address
-    for signer in signatories {
-        // 2. Decode the hex string to bytes
-        encoded.extend_from_slice(&signer);
+        //TODO: modify to send Signature obj into recover
+        let signature = Signature::from_bytes(&self.revoke_signature).expect("Invalid signature");
+
+        //Check signature
+        assert!(
+            recover(caller, signature, &self.to_ed25519_message_revoke()),
+            "invalid signature"
+        );
     }
-
-    // Return the encoded data
-    encoded
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use hex::FromHex;
+    use daosign_ed25519::recover;
+    use ed25519_dalek::{Keypair, Signature, Signer};
+    use rand::rngs::OsRng;
 
-    const OWNER_ADDR: [u8; 20] = [
-        243, 159, 214, 229, 26, 173, 136, 246, 244, 206, 106, 184, 130, 114, 121, 207, 255, 185,
-        34, 102,
-    ];
-    const OTHER_ADDR: [u8; 20] = [
-        112, 153, 121, 112, 197, 24, 18, 220, 58, 1, 12, 125, 1, 181, 14, 13, 23, 220, 121, 200,
-    ];
-    const SOME_ADDR: [u8; 20] = [
-        60, 68, 205, 221, 182, 169, 0, 250, 43, 88, 93, 210, 153, 224, 61, 18, 250, 66, 147, 188,
-    ];
-    fn domain() -> EIP712Domain {
-        EIP712Domain {
-            name: String::from("daosign"),
-            version: String::from("0.1.0"),
-        }
+    fn create_signer() -> Keypair {
+        let mut csprng = OsRng {};
+        Keypair::generate(&mut csprng)
+    }
+
+    fn sign_transaction(message: &[u8], signer: &Keypair) -> Signature {
+        signer.sign(message)
     }
 
     #[test]
-    fn check_typehash() {
-        assert_eq!(ATTESTATION_TYPEHASH, sha3(b"Attestation(uint256 attestation_id,uint256 schema_id,AttestationResult[] attestation_result,address creator,address recipient,uint32 created_at,address[] signatories)AttestationResult(string attestation_result_type,string name,bytes value)"))
-    }
+    fn test_attestation() {
+        let signer = create_signer();
 
-    #[test]
-    fn check_type() {
         // Create a vector of AttestationResults
         let attestation_results = vec![
             AttestationResult {
@@ -223,27 +173,75 @@ mod test {
         ];
 
         // Create the Attestation message with multiple results
-        let message = Attestation {
+        let attestation = Attestation {
             attestation_id: 0,
             schema_id: 0,
             attestation_result: attestation_results, // Assign the vector of results
-            creator: OWNER_ADDR,                     // Encode the creator's address
-            recipient: OTHER_ADDR,                   // Encode the recipient's address
+            creator: [0; 32],                        // Encode the creator's address
+            recipient: [0; 32],                      // Encode the recipient's address
             created_at: 1,                           // Timestamp
             signatories: vec![
-                OTHER_ADDR, // First signatory address
-                SOME_ADDR,  // Second signatory address
+                [0; 32], // First signatory address
+                [0; 32], // Second signatory address
             ],
-            signature: Vec::new(),
+            signature: vec![0; 65],
+            is_revoked: false,
+            revoked_at: 0,
+            revoke_signature: vec![0; 65],
         };
-        let expected_hash: [u8; 32] = <[u8; 32]>::from_hex(
-            "a658657462f8eccf97d075b6b2ca03617bf9ebcb4b27f615d74b1ad50106eb6c",
-        )
-        .unwrap();
-        assert_eq!(expected_hash, daosign_eip712::hash(&message));
+        // Serialize the schema to message and sign it
+        let message = attestation.to_ed25519_message();
+        let signature = sign_transaction(&message, &signer);
 
-        let signature = <[u8; 65]>::from_hex("54534ed61073d0beba225616c8220f02acd3a819d2cd378533778d4f6d3986057b012e4855ba9e7bfba086afad2c927cd416acd9c30e260433ac9dc9b10e82c01c").unwrap();
-        let recovered = daosign_eip712::recover(&domain(), &message, &signature);
-        assert_eq!(SOME_ADDR, recovered.unwrap())
+        // Verify the signature
+        let success = recover(signer.public, signature, &message);
+
+        // Assert that the signature is valid
+        assert!(success, "The signature should be valid.");
+    }
+
+    fn test_revoke() {
+        let signer = create_signer();
+
+        // Create a vector of AttestationResults
+        let attestation_results = vec![
+            AttestationResult {
+                attestation_result_type: String::from("string"),
+                name: String::from("vacancies"),
+                value: vec![18, 52, 86, 171, 205, 239, 255, 255], // Example byte data; adjust as needed
+            },
+            AttestationResult {
+                attestation_result_type: String::from("uint256"),
+                name: String::from("salary"),
+                value: vec![16, 0], // Another example byte data
+            },
+        ];
+
+        // Create the Attestation message with multiple results
+        let attestation = Attestation {
+            attestation_id: 0,
+            schema_id: 0,
+            attestation_result: attestation_results, // Assign the vector of results
+            creator: [0; 32],                        // Encode the creator's address
+            recipient: [0; 32],                      // Encode the recipient's address
+            created_at: 1,                           // Timestamp
+            signatories: vec![
+                [0; 32], // First signatory address
+                [0; 32], // Second signatory address
+            ],
+            signature: vec![0; 65],
+            is_revoked: false,
+            revoked_at: 0,
+            revoke_signature: vec![0; 65],
+        };
+        // Serialize the schema to message and sign it
+        let message = attestation.to_ed25519_message_revoke();
+        let signature = sign_transaction(&message, &signer);
+
+        // Verify the signature
+        let success = recover(signer.public, signature, &message);
+
+        // Assert that the signature is valid
+        assert!(success, "The signature should be valid.");
     }
 }

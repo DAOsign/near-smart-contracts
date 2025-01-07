@@ -10,7 +10,6 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 near-sdk = "5.0.0"
 serde = { version = "1.0.197", features = ["derive"] }
-daosign_eip712 = { path = "../daosign_eip712" }
 borsh = "1.4.0"
 borsh-derive = "1.4.0"
 schemars = "0.8.16"
