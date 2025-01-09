@@ -75,7 +75,7 @@ impl Schema {
         );
 
         // Ensure that the schema's definition is not empty
-        assert!(self.schema_definition.len() == 0, "empty schema definition");
+        assert!(self.schema_definition.len() != 0, "empty schema definition");
 
         //TODO: modify to send Signature obj into recover
         let signature = Signature::from_bytes(&self.signature).expect("Invalid signature");

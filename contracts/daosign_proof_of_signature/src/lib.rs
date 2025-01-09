@@ -1,3 +1,5 @@
+use std::{collections::HashMap, sync::Arc};
+
 use daosign_attestation::Attestation;
 use daosign_ed25519::recover;
 use daosign_schema::{Schema, SignatoryPolicy};
@@ -11,7 +13,7 @@ use serde_json;
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct ProofOfSignature {
     pub attestation_id: u128,
-    pub creator: String,
+    pub creator: [u8; 32],
     pub created_at: u32,
     pub signature: Vec<u8>,
 }
@@ -19,28 +21,34 @@ pub struct ProofOfSignature {
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct ProofOfSignatureMessage {
     pub attestation_id: u128,
-    pub creator: String,
+    pub creator: [u8; 32],
 }
 
 impl ProofOfSignature {
     pub fn to_ed25519_message(&self) -> Vec<u8> {
         let pos = ProofOfSignatureMessage {
             attestation_id: self.attestation_id,
-            creator: self.creator.clone(),
+            creator: self.creator,
         };
         // Serialize the message to JSON and convert to bytes
         serde_json::to_vec(&pos).expect("Failed to serialize message") // directly return the serialized vector
     }
 
-    pub fn validate(&self, a: Attestation, s: Schema, caller: PublicKey) {
-        assert!(a.is_revoked, "attestation revoked.");
+    pub fn validate(
+        &self,
+        a: Attestation,
+        s: Schema,
+        user_a: &HashMap<u128, HashMap<[u8; 32], Vec<Attestation>>>,
+        caller: PublicKey,
+    ) {
+        assert!(!a.is_revoked, "attestation revoked.");
 
         assert!(
             is_signatory(a.signatories, caller),
             "Invalid signatory address."
         );
 
-        // validate_signatory_policy(self, s, caller);
+        validate_signatory_policy(s, user_a, caller);
 
         //TODO: modify to send Signature obj into recover
         let signature = Signature::from_bytes(&self.signature).expect("Invalid signature");
@@ -51,71 +59,91 @@ impl ProofOfSignature {
         );
     }
 }
+
 fn is_signatory(signatories: Vec<[u8; 32]>, caller: PublicKey) -> bool {
-    let res: bool = false;
+    let mut res: bool = false;
     for signator in signatories {
-        let signator_key = PublicKey::from_bytes(&signator).unwrap();
-        if signator_key == caller {
-            res == true;
+        if signator == caller.to_bytes() {
+            res = true;
         }
     }
     res
 }
 
-// fn validate_signatory_policy(pos: &ProofOfSignature, s: Schema, signer: PublicKey) {
-//     let policy_count = s.signatory_policy.len();
+fn validate_signatory_policy(
+    s: Schema,
+    user_a: &HashMap<u128, HashMap<[u8; 32], Vec<Attestation>>>,
+    signer: PublicKey,
+) {
+    let policy_count = s.signatory_policy.len();
 
-//     if policy_count == 0 {
-//         return;
-//     }
+    if policy_count == 0 {
+        return;
+    }
 
-//     for policy in s.signatory_policy {
-//         let is_satisfied = is_policy_satisfied(pos.clone(), policy, signer);
-//         assert!(is_satisfied, "insufficient attestations.")
-//     }
-// }
+    for policy in s.signatory_policy {
+        let is_satisfied = is_policy_satisfied(policy, user_a, signer);
+        assert!(is_satisfied, "insufficient attestations.")
+    }
+}
 
-// fn is_policy_satisfied(pos: ProofOfSignature, policy: SignatoryPolicy, signer: PublicKey) -> bool {
-//     let required_attestation_count = policy.required_schema_id.len();
-//     if required_attestation_count == 0 {
-//         return true;
-//     }
+fn is_policy_satisfied(
+    policy: SignatoryPolicy,
+    user_a: &HashMap<u128, HashMap<[u8; 32], Vec<Attestation>>>,
+    signer: PublicKey,
+) -> bool {
+    let required_attestation_count = policy.required_schema_id.len();
+    if required_attestation_count == 0 {
+        return true;
+    }
 
-//     let mut result = false;
-//     for (i, &schema_id) in policy.required_schema_id.iter().enumerate() {
-//         let has_attestation = get_user_attestations().len() > 0;
+    let mut result = false;
+    for (i, &schema_id) in policy.required_schema_id.iter().enumerate() {
+        let has_attestation = get_user_attestations(user_a, schema_id, signer.to_bytes()).len() > 0;
 
-//         match policy.operator {
-//             0x01 => {
-//                 if i == 0 {
-//                     result = true;
-//                 }
-//                 result = result && has_attestation;
-//                 if !result {
-//                     break;
-//                 }
-//             }
-//             0x02 => {
-//                 result = result || has_attestation;
-//                 if result {
-//                     break;
-//                 }
-//             }
-//             0x03 => {
-//                 if i == 0 {
-//                     result = true;
-//                 }
-//                 result = result && !has_attestation;
-//                 if !result {
-//                     break;
-//                 }
-//             }
-//             _ => panic!("Unsupported operator"),
-//         }
-//     }
+        match policy.operator {
+            0x01 => {
+                if i == 0 {
+                    result = true;
+                }
+                result = result && has_attestation;
+                if !result {
+                    break;
+                }
+            }
+            0x02 => {
+                result = result || has_attestation;
+                if result {
+                    break;
+                }
+            }
+            0x03 => {
+                if i == 0 {
+                    result = true;
+                }
+                result = result && !has_attestation;
+                if !result {
+                    break;
+                }
+            }
+            _ => panic!("Unsupported operator"),
+        }
+    }
 
-//     result
-// }
+    result
+}
+
+fn get_user_attestations(
+    user_a: &HashMap<u128, HashMap<[u8; 32], Vec<Attestation>>>,
+    schema_id: u128,
+    caller: [u8; 32],
+) -> Vec<Attestation> {
+    user_a
+        .get(&schema_id) // Get the map for schema_id
+        .and_then(|caller_map| caller_map.get(&caller)) // Get the attestations for caller
+        .cloned() // Clone the vector (Option<Vec<Attestation>>)
+        .unwrap_or_else(Vec::new) // If None, return an empty Vec
+}
 
 #[cfg(test)]
 mod tests {
@@ -139,8 +167,8 @@ mod tests {
         let signer = create_signer();
 
         let pos = ProofOfSignature {
-            attestation_id: 0,             // Default ID value
-            creator: hex::encode([0; 20]), // The creator's address
+            attestation_id: 0,      // Default ID value
+            creator: [0; 32],       // The creator's address
             created_at: 0, // Default creation timestamp (you can set this to the current time if desired)
             signature: vec![0; 65], // Placeholder for the signature, e.g., 65 bytes for some types (e.g., ECDSA)
         };

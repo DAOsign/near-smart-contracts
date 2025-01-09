@@ -74,24 +74,25 @@ impl Attestation {
 
     pub fn validate(&self, s: Schema, caller: PublicKey) {
         // Ensure that if the schema is private, the sender is the creator of the attestation.
-        assert!(
-            !s.metadata.is_public && self.creator != caller.to_bytes(),
-            "unauthorized attestator"
-        );
+        if !s.metadata.is_public {
+            assert!(self.creator == caller.to_bytes(), "unauthorized attestator");
+        }
+
         // Get the current block timestamp in seconds
         let current_timestamp = env::block_timestamp();
 
         // Check if the schema has expired based on its metadata
-        assert!(
-            s.metadata.expire_in != 0
-                && (s.metadata.created_at + s.metadata.expire_in
+        if s.metadata.expire_in != 0 {
+            assert!(
+                (s.metadata.created_at + s.metadata.expire_in
                     < current_timestamp.try_into().unwrap()),
-            "schema already expired"
-        );
+                "schema already expired"
+            );
+        }
 
         // Ensure that the length of attestation results matches the length of the schema definition
         assert!(
-            self.attestation_result.len() != s.schema_definition.len(),
+            self.attestation_result.len() == s.schema_definition.len(),
             "attestation length mismatch"
         );
 
@@ -121,14 +122,14 @@ impl Attestation {
         );
     }
 
-    pub fn validate_revoke(&self, s: Schema, caller: PublicKey) {
-        assert!(!s.metadata.is_revokable, "attestation can't be revoked");
+    pub fn validate_revoke(&self, s: Schema, sig: Vec<u8>, caller: PublicKey) {
+        assert!(s.metadata.is_revokable, "attestation can't be revoked");
 
         // Check if the sender is the original creator of the attestation before revoking it
-        assert!(self.creator != caller.to_bytes(), "unauthorized attestator");
+        assert!(self.creator == caller.to_bytes(), "unauthorized attestator");
 
         //TODO: modify to send Signature obj into recover
-        let signature = Signature::from_bytes(&self.revoke_signature).expect("Invalid signature");
+        let signature = Signature::from_bytes(&sig).expect("Invalid signature");
 
         //Check signature
         assert!(

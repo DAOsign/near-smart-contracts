@@ -19,5 +19,5 @@ use schemars::JsonSchema;
 )]
 pub struct ProofOfAgreement {
     pub attestation_id: u128,
-    pub signatures: Vec<u8>,
+    pub signatures: Vec<Vec<u8>>,
 }
