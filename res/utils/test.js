@@ -5,8 +5,8 @@ window.onload = async function () {
   const nearAPI = await window.nearApi;
   console.log(window);
   const { connect, WalletConnection, keyStores, KeyPair, utils } = await nearAPI;
-  const account_Id = "user.testnet"; // Replace with your account ID
 
+  const account_Id = "user.testnet"; // Replace with your account ID
   const privateKey = "ed25519:0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"; // Replace with your private key
 
   const customKeyStore = new keyStores.InMemoryKeyStore();
@@ -14,6 +14,7 @@ window.onload = async function () {
   // Function to add a key to the keystore
   async function addKeyToKeystore(accountId, privateKey) {
     const keyPair = KeyPair.fromString(privateKey);
+
     await customKeyStore.setKey("testnet", accountId, keyPair);
     console.log(`Key for account ${accountId} added to custom keyStore.`);
   }
@@ -50,7 +51,10 @@ window.onload = async function () {
 
   // Function to send a signed message
   async function signAndSendMessage(message) {
+    let wallet = await initContract();
+
     const keyPair = KeyPair.fromString(privateKey);
+
     const signature = signMessage(message.text, keyPair);
     console.log("Message signed:", signature);
 

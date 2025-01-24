@@ -1,28 +1,53 @@
 use daosign_ed25519::recover;
 use ed25519_dalek::{PublicKey, Signature};
-use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::{
+    borsh::{self, BorshDeserialize, BorshSerialize},
+    env, AccountId,
+};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json;
 
 /// ProofOfSignature struct representing the Proof-of-Signature parameters.
 // #[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(
+    BorshDeserialize,
+    BorshSerialize,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    JsonSchema,
+)]
 pub struct SchemaMetadata {
     pub name: String,
     pub description: String,
     pub attestation_type: String,
     pub nft_name: String,
     pub nft_symbol: String,
-    pub creator: [u8; 32], // Use String to represent address
-    pub created_at: u32,
+    pub collection_id: String,
+    pub creator: String, // Use String to represent address
+    pub created_at: u64,
     pub is_nft: bool,
     pub is_public: bool,
     pub is_revokable: bool,
-    pub expire_in: u32,
+    pub expire_in: u64,
 }
 /// ProofOfSignature struct representing the Proof-of-Signature parameters.
 // #[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(
+    BorshDeserialize,
+    BorshSerialize,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    JsonSchema,
+)]
 pub struct SignatoryPolicy {
     pub operator: u8, // bytes1 in Solidity can be represented as u8
     pub signatory_description: String,
@@ -31,23 +56,52 @@ pub struct SignatoryPolicy {
 
 /// ProofOfSignature struct representing the Proof-of-Signature parameters.
 // #[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(
+    BorshDeserialize,
+    BorshSerialize,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    JsonSchema,
+)]
 pub struct SchemaDefinition {
     pub definition_type: String,
     pub definition_name: String,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(
+    BorshDeserialize,
+    BorshSerialize,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    JsonSchema,
+)]
 pub struct Schema {
     pub schema_id: u128, // Assuming large ids
     pub metadata: SchemaMetadata,
     pub signatory_policy: Vec<SignatoryPolicy>,
     pub schema_definition: Vec<SchemaDefinition>,
-    //TODO: change to Signature instance
     pub signature: Vec<u8>,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(
+    BorshDeserialize,
+    BorshSerialize,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    JsonSchema,
+)]
 pub struct SchemaMessage {
     schema_id: u128, // Assuming large ids
     metadata: SchemaMetadata,
@@ -67,18 +121,31 @@ impl Schema {
         serde_json::to_vec(&schema).expect("Failed to serialize message") // directly return the serialized vector
     }
 
-    pub fn validate(&self, caller: PublicKey) {
+    pub fn validate(&self) {
         // Check if the sender of the request is the creator of the schema
+        let creator_id: AccountId = self.metadata.creator.parse().expect("Invalid address");
+
         assert!(
-            self.metadata.creator == caller.to_bytes(),
+            creator_id == env::signer_account_id(),
             "unauthorized schema creator!"
         );
 
         // Ensure that the schema's definition is not empty
-        assert!(self.schema_definition.len() != 0, "empty schema definition");
+        assert!(
+            self.schema_definition.len() != 0,
+            "empty schema definition!"
+        );
 
-        //TODO: modify to send Signature obj into recover
         let signature = Signature::from_bytes(&self.signature).expect("Invalid signature");
+
+        println!("{:?}", env::signer_account_pk());
+
+        let caller_pk = env::signer_account_pk(); // ✅ Extract raw bytes from `near_sdk::PublicKey`
+
+        // ✅ Ensure it's 33 bytes and remove the first byte (prefix)
+        let ed25519_bytes = &caller_pk.as_bytes()[1..]; // Extract only the last 32 bytes
+        let caller =
+            PublicKey::from_bytes(ed25519_bytes).expect("❌ Failed to parse Dalek PublicKey");
 
         //Wrong signature
         assert!(
@@ -118,7 +185,12 @@ mod tests {
                 attestation_type: String::from("agreement"),
                 nft_name: String::from("vacancy collection"),
                 nft_symbol: String::from("vcc"),
-                creator: [0u8; 32], // Example address as hex
+                collection_id: "coolection.testnet"
+                    .parse()
+                    .expect("Invalid schema account ID!"),
+                creator: "creator.testnet"
+                    .parse()
+                    .expect("Invalid schema account ID!"), // Example address as hex
                 created_at: 1,
                 is_nft: true,
                 is_public: false,

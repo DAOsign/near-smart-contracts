@@ -5,46 +5,87 @@ use near_sdk::{
     borsh::{self, BorshDeserialize, BorshSerialize},
     env,
 };
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json;
 
 /// ProofOfSignature struct representing the Proof-of-Signature parameters.
 // #[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(
+    BorshDeserialize,
+    BorshSerialize,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    JsonSchema,
+)]
 pub struct Attestation {
     pub attestation_id: u128,
     pub schema_id: u128,
     pub attestation_result: Vec<AttestationResult>,
-    pub creator: [u8; 32],
-    pub recipient: [u8; 32],
-    pub created_at: u32, // Use String to represent address
-    pub signatories: Vec<[u8; 32]>,
+    pub creator: String,
+    pub recipient: String,
+    pub created_at: u64, // Use String to represent address
+    pub signatories: Vec<String>,
     pub signature: Vec<u8>,
     pub is_revoked: bool,
-    pub revoked_at: u32,
+    pub revoked_at: u64,
     pub revoke_signature: Vec<u8>,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(
+    BorshDeserialize,
+    BorshSerialize,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    JsonSchema,
+)]
 pub struct AttestationMessage {
     attestation_id: u128,
     schema_id: u128,
     attestation_result: Vec<AttestationResult>,
-    creator: [u8; 32],
-    recipient: [u8; 32],
-    created_at: u32, // Use String to represent address
-    signatories: Vec<[u8; 32]>,
+    creator: String,
+    recipient: String,
+    created_at: u64, // Use String to represent address
+    signatories: Vec<String>,
 }
 /// ProofOfSignature struct representing the Proof-of-Signature parameters.
 // #[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(
+    BorshDeserialize,
+    BorshSerialize,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    JsonSchema,
+)]
 pub struct AttestationResult {
     pub attestation_result_type: String,
     pub name: String,
     pub value: Vec<u8>,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(
+    BorshDeserialize,
+    BorshSerialize,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    JsonSchema,
+)]
 pub struct RevokeMessage {
     attestation_id: u128,
 }
@@ -55,8 +96,8 @@ impl Attestation {
             attestation_id: self.attestation_id,
             schema_id: self.schema_id,
             attestation_result: self.attestation_result.clone(),
-            creator: self.creator,
-            recipient: self.recipient,
+            creator: self.creator.clone(),
+            recipient: self.recipient.clone(),
             created_at: self.created_at,
             signatories: self.signatories.clone(),
         };
@@ -72,10 +113,13 @@ impl Attestation {
         serde_json::to_vec(&revoke).expect("Failed to serialize message") // directly return the serialized vector
     }
 
-    pub fn validate(&self, s: Schema, caller: PublicKey) {
+    pub fn validate(&self, s: Schema) {
         // Ensure that if the schema is private, the sender is the creator of the attestation.
         if !s.metadata.is_public {
-            assert!(self.creator == caller.to_bytes(), "unauthorized attestator");
+            assert!(
+                self.creator == env::signer_account_id(),
+                "unauthorized attestator!"
+            );
         }
 
         // Get the current block timestamp in seconds
@@ -86,14 +130,14 @@ impl Attestation {
             assert!(
                 (s.metadata.created_at + s.metadata.expire_in
                     < current_timestamp.try_into().unwrap()),
-                "schema already expired"
+                "schema already expired!"
             );
         }
 
         // Ensure that the length of attestation results matches the length of the schema definition
         assert!(
             self.attestation_result.len() == s.schema_definition.len(),
-            "attestation length mismatch"
+            "attestation length mismatch!"
         );
 
         let mut i = 0;
@@ -101,20 +145,25 @@ impl Attestation {
             // Check that the names match between the schema definition and the attestation result
             assert!(
                 s.schema_definition[i].definition_name == self.attestation_result[i].name,
-                "attestation name mismatch"
+                "attestation name mismatch!"
             );
             // Check that the types match between the schema definition and the attestation result
             assert!(
                 s.schema_definition[i].definition_type
                     == self.attestation_result[i].attestation_result_type,
-                "attestation type mismatch"
+                "attestation type mismatch!"
             );
             i += 1;
         }
 
-        //TODO: modify to send Signature obj into recover
         let signature = Signature::from_bytes(&self.signature).expect("Invalid signature");
 
+        let caller_pk = env::signer_account_pk(); // ✅ Extract raw bytes from `near_sdk::PublicKey`
+
+        // ✅ Ensure it's 33 bytes and remove the first byte (prefix)
+        let ed25519_bytes = &caller_pk.as_bytes()[1..]; // Extract only the last 32 bytes
+        let caller =
+            PublicKey::from_bytes(ed25519_bytes).expect("❌ Failed to parse Dalek PublicKey");
         //Check signature
         assert!(
             recover(caller, signature, &self.to_ed25519_message()),
@@ -122,15 +171,23 @@ impl Attestation {
         );
     }
 
-    pub fn validate_revoke(&self, s: Schema, sig: Vec<u8>, caller: PublicKey) {
-        assert!(s.metadata.is_revokable, "attestation can't be revoked");
+    pub fn validate_revoke(&self, s: Schema, sig: Vec<u8>) {
+        assert!(s.metadata.is_revokable, "attestation can't be revoked!");
 
         // Check if the sender is the original creator of the attestation before revoking it
-        assert!(self.creator == caller.to_bytes(), "unauthorized attestator");
+        assert!(
+            self.creator == env::signer_account_id(),
+            "unauthorized attestator!"
+        );
 
-        //TODO: modify to send Signature obj into recover
         let signature = Signature::from_bytes(&sig).expect("Invalid signature");
 
+        let caller_pk = env::signer_account_pk(); // ✅ Extract raw bytes from `near_sdk::PublicKey`
+
+        // ✅ Ensure it's 33 bytes and remove the first byte (prefix)
+        let ed25519_bytes = &caller_pk.as_bytes()[1..]; // Extract only the last 32 bytes
+        let caller =
+            PublicKey::from_bytes(ed25519_bytes).expect("❌ Failed to parse Dalek PublicKey");
         //Check signature
         assert!(
             recover(caller, signature, &self.to_ed25519_message_revoke()),
@@ -178,12 +235,12 @@ mod test {
             attestation_id: 0,
             schema_id: 0,
             attestation_result: attestation_results, // Assign the vector of results
-            creator: [0; 32],                        // Encode the creator's address
-            recipient: [0; 32],                      // Encode the recipient's address
-            created_at: 1,                           // Timestamp
+            creator: "test.collection.testnet".parse().expect("Invalid address"), // Encode the creator's address
+            recipient: "test.collection.testnet".parse().expect("Invalid address"), // Encode the recipient's address
+            created_at: 1,                                                          // Timestamp
             signatories: vec![
-                [0; 32], // First signatory address
-                [0; 32], // Second signatory address
+                "test.collection.testnet".parse().expect("Invalid address"), // First signatory address
+                "test.collection.testnet".parse().expect("Invalid address"), // Second signatory address
             ],
             signature: vec![0; 65],
             is_revoked: false,
@@ -201,6 +258,7 @@ mod test {
         assert!(success, "The signature should be valid.");
     }
 
+    #[test]
     fn test_revoke() {
         let signer = create_signer();
 
@@ -223,12 +281,12 @@ mod test {
             attestation_id: 0,
             schema_id: 0,
             attestation_result: attestation_results, // Assign the vector of results
-            creator: [0; 32],                        // Encode the creator's address
-            recipient: [0; 32],                      // Encode the recipient's address
-            created_at: 1,                           // Timestamp
+            creator: "test.collection.testnet".parse().expect("Invalid address"), // Encode the creator's address
+            recipient: "test.collection.testnet".parse().expect("Invalid address"), // Encode the recipient's address
+            created_at: 1,                                                          // Timestamp
             signatories: vec![
-                [0; 32], // First signatory address
-                [0; 32], // Second signatory address
+                "test.collection.testnet".parse().expect("Invalid address"), // First signatory address
+                "test.collection.testnet".parse().expect("Invalid address"), // Second signatory address
             ],
             signature: vec![0; 65],
             is_revoked: false,

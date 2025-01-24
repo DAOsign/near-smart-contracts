@@ -1,0 +1,22 @@
+[package]
+name = "daosign_factory"
+version = "1.0.0"
+authors = ["Near Inc <hello@nearprotocol.com>"]
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+borsh = "1.4.0"
+borsh-derive = "1.4.0"
+serde = { version = "1.0.197", features = ["derive"] }
+near-sdk = "5.7.0"
+near-contract-standards = "5.7.0"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

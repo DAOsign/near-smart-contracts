@@ -2,9 +2,10 @@ mod daosign_app {
     use ed25519_dalek::PublicKey;
     use near_sdk::{
         borsh::{self, BorshDeserialize, BorshSerialize},
-        env, log, near_bindgen,
+        env, log, near_bindgen, serde_json, AccountId, Gas, NearToken, Promise, PromiseError,
     };
     use serde::{Deserialize, Serialize};
+    use serde_json::json;
     use std::collections::HashMap;
 
     use daosign_attestation::Attestation;
@@ -12,6 +13,7 @@ mod daosign_app {
     use daosign_proof_of_signature::ProofOfSignature;
     use daosign_schema::Schema;
 
+    use near_contract_standards::non_fungible_token::metadata::TokenMetadata;
     /// Main storage structure for DAOsignApp contract.
     #[near_bindgen]
     #[derive(
@@ -22,18 +24,21 @@ mod daosign_app {
         pub schema_id: u128,
         pub attestation_id: u128,
 
+        // nft collection hashmap
+        pub collections: HashMap<u128, AccountId>, // schema_id => nft collection contract
         // Mappings
         pub schemas: HashMap<u128, Schema>, // schema_id => Schema
         pub attestations: HashMap<u128, Attestation>, // attestation_id => Attestation
         pub poa: HashMap<u128, Vec<ProofOfAgreement>>, // attestation_id => ProofOfSignature
         pub pos: HashMap<u128, Vec<ProofOfSignature>>, // attestation_id => ProofOfAgreement
-        pub signed_attestation: HashMap<u128, HashMap<[u8; 32], bool>>, // attestation_id  => user => signed
-        pub user_attestation: HashMap<u128, HashMap<[u8; 32], Vec<Attestation>>>, // schema_id  => user => Attestation[]
+        pub signed_attestation: HashMap<u128, HashMap<String, bool>>, // attestation_id  => user => signed
+        pub user_attestation: HashMap<u128, HashMap<String, Vec<Attestation>>>, // schema_id  => user => Attestation[]
     }
 
     impl Default for DAOSignApp {
         fn default() -> Self {
             Self {
+                collections: HashMap::new(),
                 schema_id: 0,
                 attestation_id: 0,
                 schemas: HashMap::new(),
@@ -58,6 +63,7 @@ mod daosign_app {
         #[init]
         pub fn new() -> Self {
             Self {
+                collections: HashMap::new(),
                 schema_id: 0,
                 attestation_id: 0,
                 schemas: HashMap::new(),
@@ -78,20 +84,30 @@ mod daosign_app {
         /// * `data` - Schema struct containing the schema data.
         /// * `caller` - Address of user who sign this message.
         #[payable]
-        pub fn store_schema(&mut self, data: Schema, caller: [u8; 32]) {
-            let caller_key = PublicKey::from_bytes(&caller).unwrap();
-
+        pub fn store_schema(&mut self, mut data: Schema) {
             // Validate the data
-            data.validate(caller_key);
+            data.validate();
 
-            // Store
+            data.schema_id = self.schema_id;
+            // Store the schema
             self.schemas.insert(self.schema_id, data.clone());
 
-            //Increment schema id
+            if data.metadata.is_nft {
+                self.collections.insert(
+                    data.schema_id,
+                    data.metadata
+                        .collection_id
+                        .clone()
+                        .parse()
+                        .expect("invalid id"),
+                );
+            }
+
+            // Increment schema ID
             self.schema_id += 1;
 
-            //Emit event
-            // log!("Event: SchemaCreated {{ data: {:?} }}", data);
+            // Emit event
+            // log!("Event: SchemaCreated {{ data: {:?} }}", data.clone());
         }
 
         /// # Message to store a Attestation.
@@ -103,22 +119,44 @@ mod daosign_app {
         /// * `data` - Attestation struct containing the schema data.
         /// * `caller` - Address of user who sign this message.
         #[payable]
-        pub fn store_attestation(&mut self, data: Attestation, caller: [u8; 32]) {
-            let caller_key = PublicKey::from_bytes(&caller).unwrap();
-
-            const ZERO_ADDRESS: [u8; 32] = [0u8; 32]; // Define zero address
+        pub fn store_attestation(&mut self, mut data: Attestation) {
+            static ZERO_ID: String = String::new(); // Define zero address
 
             let s = self.get_schema(data.schema_id);
 
             // Validate the data
-            data.validate(s, caller_key);
+            data.validate(s.clone());
+
+            data.attestation_id = self.attestation_id;
 
             // Store attestation
             self.attestations.insert(self.attestation_id, data.clone());
 
+            if s.metadata.is_nft && s.signatory_policy.len() == 0 && data.recipient != ZERO_ID {
+                let contract_address = self
+                    .collections
+                    .get(&data.schema_id)
+                    .expect("collection not exist");
+
+                // Call the deployed contract's `nft_mint` method
+                let args = json!({
+                    "token_id": data.attestation_id.to_string(),
+                    "token_owner_id": data.recipient,
+                    "token_metadata":sample_token_metadata()
+                })
+                .to_string()
+                .into_bytes();
+
+                Promise::new(contract_address.clone()).function_call(
+                    String::from("nft_mint"),
+                    args,
+                    NearToken::from_yoctonear(10_250_000_000_000_000_000_000),
+                    Gas::from_tgas(5),
+                );
+            }
             // Store attestation for user / signatories
-            if data.recipient != ZERO_ADDRESS {
-                let recipient: Vec<[u8; 32]> = vec![data.recipient]; // Wrap the recipient in a Vec
+            if data.recipient != ZERO_ID {
+                let recipient: Vec<String> = vec![data.clone().recipient]; // Wrap the recipient in a Vec
                 self.store_user_attestation(recipient, data.clone());
             }
             self.store_user_attestation(data.signatories.clone(), data.clone());
@@ -140,14 +178,33 @@ mod daosign_app {
         /// * `sig` - Message signature.
         /// * `caller` - Address of user who sign this message.
         #[payable]
-        pub fn store_revoke(&mut self, a_id: u128, sig: Vec<u8>, caller: [u8; 32]) {
-            let caller_key = PublicKey::from_bytes(&caller).unwrap();
-
+        pub fn store_revoke(&mut self, a_id: u128, sig: Vec<u8>) {
             let mut a = self.get_attestation(a_id);
             let s = self.get_schema(a.schema_id);
 
             // Validate revoke
-            a.validate_revoke(s, sig.clone(), caller_key);
+            a.validate_revoke(s.clone(), sig.clone());
+
+            if s.metadata.is_nft {
+                let contract_address = self
+                    .collections
+                    .get(&a.schema_id)
+                    .expect("collection not exist");
+
+                // Call the deployed contract's `nft_mint` method
+                let args = json!({
+                    "token_id": a.attestation_id.to_string(),
+                })
+                .to_string()
+                .into_bytes();
+
+                Promise::new(contract_address.clone()).function_call(
+                    String::from("nft_burn"),
+                    args,
+                    NearToken::from_yoctonear(10_250_000_000_000_000_000_000),
+                    Gas::from_tgas(5),
+                );
+            }
 
             // modify store revoke status
             a.revoked_at = env::block_timestamp().try_into().unwrap();
@@ -166,7 +223,7 @@ mod daosign_app {
             self.user_attestation
                 .entry(a.schema_id)
                 .or_insert_with(HashMap::new)
-                .entry(a.recipient)
+                .entry(a.clone().recipient)
                 .or_insert_with(Vec::new)
                 .push(a.clone()); // Push the updated attestation
 
@@ -186,13 +243,12 @@ mod daosign_app {
         /// * `data` - Proof of Signature struct containing the schema data.
         /// * `caller` - Address of user who sign this message.
         #[payable]
-        pub fn store_pos(&mut self, data: ProofOfSignature, caller: [u8; 32]) {
-            let caller_key = PublicKey::from_bytes(&caller).unwrap();
-
+        pub fn store_pos(&mut self, data: ProofOfSignature) {
+            let caller_id = env::signer_account_id();
             if let Some(true) = self
                 .signed_attestation
                 .get(&data.attestation_id)
-                .and_then(|map| map.get(&caller))
+                .and_then(|map| map.get(&String::from(caller_id.as_str())))
             {
                 panic!("Attestation already signed by caller.");
             }
@@ -201,7 +257,7 @@ mod daosign_app {
             let s = self.get_schema(a.schema_id);
 
             // Validate the data
-            data.validate(a.clone(), s, &self.user_attestation, caller_key);
+            data.validate(a.clone(), s, &self.user_attestation);
 
             // Store the ProofOfSignature
             self.pos
@@ -219,12 +275,12 @@ mod daosign_app {
             self.signed_attestation
                 .entry(data.attestation_id)
                 .or_insert_with(HashMap::new)
-                .insert(caller, true);
+                .insert(String::from(caller_id.clone().as_str()), true);
 
-            log!(
-                "Event: ProofOfSignatureStored {{pos: {:?} }} ",
-                data.attestation_id
-            );
+            // log!(
+            //     "Event: ProofOfSignatureStored {{pos: {:?} }} ",
+            //     data.clone()
+            // );
         }
 
         /// # Message to store a Proof of Agreement.
@@ -244,6 +300,26 @@ mod daosign_app {
             for proof in &proofs {
                 signatory_proofs.push(proof.signature.clone());
             }
+            let contract_address = self
+                .collections
+                .get(&a.schema_id)
+                .expect("collection not exist");
+
+            // Call the deployed contract's `nft_mint` method
+            let args = json!({
+                "token_id": a.attestation_id.to_string(),
+                "token_owner_id": env::current_account_id(),
+                "token_metadata":sample_token_metadata()
+            })
+            .to_string()
+            .into_bytes();
+
+            Promise::new(contract_address.clone()).function_call(
+                String::from("nft_mint"),
+                args,
+                NearToken::from_yoctonear(10_250_000_000_000_000_000_000),
+                Gas::from_tgas(5),
+            );
 
             // Create the ProofOfAgreement struct
             let proof_of_agreement = ProofOfAgreement {
@@ -253,7 +329,11 @@ mod daosign_app {
             self.poa
                 .entry(a.attestation_id)
                 .or_insert_with(Vec::new)
-                .push(proof_of_agreement);
+                .push(proof_of_agreement.clone());
+            // log!(
+            //     "Event: ProofOfAgreementStored {{poa: {:?} }} ",
+            //     proof_of_agreement.clone()
+            // );
         }
 
         /// # Util method to store user attestation.
@@ -264,7 +344,7 @@ mod daosign_app {
         ///
         /// * `users` - list of users to store Attestation for them.
         /// * `data` - Attestation data that will be stored.
-        fn store_user_attestation(&mut self, users: Vec<[u8; 32]>, data: Attestation) {
+        fn store_user_attestation(&mut self, users: Vec<String>, data: Attestation) {
             for user in users {
                 // Get or create the outer entry for the attestation ID
                 let user_attestations = self
@@ -314,6 +394,17 @@ mod daosign_app {
             self.pos.get(&attestation_id).unwrap().clone()
         }
 
+        /// # Message to retrieve a Proof of Agreement by attestation id.
+        ///
+        /// This function retrieves a stored Proof of Agreement by  attestation id.
+        ///
+        /// # Arguments
+        ///
+        /// * `attestation_id` - String representing the ID of the Attestation.
+        pub fn get_proof_of_agreement(&self, attestation_id: u128) -> Vec<ProofOfAgreement> {
+            self.poa.get(&attestation_id).unwrap().clone()
+        }
+
         /// # Message to retrieve an Attestations  for a specific user by schema id & his address.
         ///
         /// This function retrieves a stored Attestation by  by schema id & user address.
@@ -322,7 +413,7 @@ mod daosign_app {
         ///
         /// * `schema_id` - String representing the ID of the Schema.
         /// * `caller` - Address of a specific user.
-        pub fn get_user_attestations(&self, schema_id: u128, caller: [u8; 32]) -> Vec<Attestation> {
+        pub fn get_user_attestations(&self, schema_id: u128, caller: String) -> Vec<Attestation> {
             self.user_attestation
                 .get(&schema_id) // Get the map for schema_id
                 .and_then(|caller_map| caller_map.get(&caller)) // Get the attestations for caller
@@ -330,16 +421,40 @@ mod daosign_app {
                 .unwrap_or_else(Vec::new) // If None, return an empty Vec
         }
     }
+    pub fn sample_token_metadata() -> TokenMetadata {
+        TokenMetadata {
+            title: Some("Olympus Mons".into()),
+            description: Some("The tallest mountain in the charted solar system".into()),
+            media: None,
+            media_hash: None,
+            copies: Some(1u64),
+            issued_at: None,
+            expires_at: None,
+            starts_at: None,
+            updated_at: None,
+            extra: None,
+            reference: None,
+            reference_hash: None,
+        }
+    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::{any::Any, str::FromStr};
+
+    use borsh::BorshDeserialize;
     use daosign_app::DAOSignApp;
     use daosign_attestation::{Attestation, AttestationResult};
     use daosign_proof_of_signature::ProofOfSignature;
     use daosign_schema::{Schema, SchemaDefinition, SchemaMetadata, SignatoryPolicy};
-    use ed25519_dalek::{Keypair, Signature, Signer};
+    use ed25519_dalek::{Keypair, PublicKey as DalekPublicKey, Signature, Signer};
+    use near_sdk::{
+        bs58,
+        test_utils::{accounts, VMContextBuilder},
+        testing_env, AccountId, NearToken, PublicKey, VMContext,
+    };
     use rand::rngs::OsRng;
 
     fn create_signer() -> Keypair {
@@ -356,7 +471,59 @@ mod test {
         DAOSignApp::new()
     }
 
-    fn create_attestation(creator: [u8; 32]) -> Attestation {
+    /// Convert Dalek PublicKey to `near_sdk::PublicKey`
+    fn convert_public_key_to_near(dalek_pk: &DalekPublicKey) -> PublicKey {
+        let pub_key_bytes = dalek_pk.as_bytes(); // ✅ Extract raw bytes
+        let base58_pub_key = bs58::encode(pub_key_bytes).into_string(); // ✅ Encode in Base58
+        let near_pk_str = format!("ed25519:{}", base58_pub_key); // ✅ Format for NEAR
+        PublicKey::from_str(&near_pk_str).expect("❌ Invalid public key format")
+        // ✅ Convert to `near_sdk::PublicKey`
+    }
+
+    fn update_states(id: Option<usize>) -> Keypair {
+        // Unwrap `id` or use `0` as default
+        let account_index = id.unwrap_or(0);
+
+        let signer_pk: Keypair = create_signer();
+
+        let signer_pk_near = convert_public_key_to_near(&signer_pk.public);
+        // Set up a mock environment
+        let context: VMContext = VMContextBuilder::new()
+            .current_account_id(accounts(account_index)) // ✅ Set account dynamically
+            .signer_account_id(accounts(account_index))  // ✅ Set signer dynamically
+            .signer_account_pk(signer_pk_near)
+            .attached_deposit(NearToken::from_near(10))  // Attach some NEAR for deployment
+            .build();
+
+        testing_env!(context); // ✅ Apply mock environment
+        signer_pk
+    }
+
+    /// Utility method to check if the result contains the expected error message.
+    fn check_error(msg: &str, result: Result<(), Box<dyn Any + Send>>) -> bool {
+        if let Err(err) = result {
+            if let Some(err_msg) = err.downcast_ref::<String>() {
+                assert!(
+                    err_msg.contains(msg),
+                    "Unexpected error message: {}",
+                    err_msg
+                );
+                true
+            } else if let Some(err_msg) = err.downcast_ref::<&str>() {
+                assert!(
+                    err_msg.contains(msg),
+                    "Unexpected error message: {}",
+                    err_msg
+                );
+                true
+            } else {
+                panic!("Error occurred, but it was not a String or &str type.");
+            }
+        } else {
+            panic!("No error occurred, but an error was expected.");
+        }
+    }
+    fn create_attestation(creator: String, signatory: String) -> Attestation {
         // Create a vector of AttestationResults
         let attestation_results = vec![
             AttestationResult {
@@ -376,11 +543,12 @@ mod test {
             attestation_id: 0,
             schema_id: 0,
             attestation_result: attestation_results, // Assign the vector of results
-            creator,                                 // Encode the creator's address
-            recipient: creator,                      // Encode the recipient's address
+            creator: creator.clone(),                // Encode the creator's address
+            recipient: creator.clone(),              // Encode the recipient's address
             created_at: 1,                           // Timestamp
             signatories: vec![
-                creator, // First signatory address
+                creator.clone(), // First signatory address
+                signatory,
             ],
             signature: vec![0; 65],
             is_revoked: false,
@@ -389,8 +557,7 @@ mod test {
         };
         attestation
     }
-
-    fn create_pos(a_id: u128, creator: [u8; 32]) -> ProofOfSignature {
+    fn create_pos(a_id: u128, creator: String) -> ProofOfSignature {
         let pos = ProofOfSignature {
             attestation_id: a_id,
             creator,
@@ -399,7 +566,7 @@ mod test {
         };
         pos
     }
-    fn create_schema(creator: [u8; 32]) -> Schema {
+    fn create_schema(creator: String) -> Schema {
         let schema_data = Schema {
             schema_id: 0,
             metadata: SchemaMetadata {
@@ -408,7 +575,8 @@ mod test {
                 attestation_type: "agreement".to_string(),
                 nft_name: "nft_name".to_string(),
                 nft_symbol: "nft_symbol".to_string(),
-                creator,
+                collection_id: "test.collection.testnet".parse().expect("Invalid address"),
+                creator: creator.parse().expect("Invalid address"),
                 created_at: 1,
                 is_nft: true,
                 is_public: false,
@@ -437,16 +605,22 @@ mod test {
 
     #[test]
     fn test_store_schema() {
+        let caller = update_states(Some(0));
+
         let mut app = create_daosign_app();
 
-        let caller = create_signer();
+        let signer: AccountId = accounts(0);
 
-        let mut schema = create_schema(caller.public.to_bytes());
+        let mut schema = create_schema(String::from(signer.as_str()));
+
         let message = schema.to_ed25519_message();
         let signature = sign_transaction(&message, &caller);
         schema.signature = signature.to_bytes().to_vec();
         // Store schema
-        app.store_schema(schema.clone(), caller.public.to_bytes());
+        app.store_schema(schema.clone());
+        let coll = app.collections.get(&0);
+
+        println!("collection: {:?}", coll);
 
         // Verify schema is stored
         assert_eq!(app.schemas.len(), 1);
@@ -455,33 +629,38 @@ mod test {
 
     #[test]
     fn test_schema_unauthorized_schema_creator() {
+        let caller = update_states(Some(0));
+
         let result = std::panic::catch_unwind(|| {
             let mut app = create_daosign_app();
 
-            let caller = create_signer();
+            let signer: AccountId = accounts(0);
 
-            let mut schema = create_schema(caller.public.to_bytes());
-            schema.metadata.creator = [1u8; 32]; // Change to an unauthorized creator
+            let mut schema = create_schema(String::from(signer.as_str()));
+            schema.metadata.creator = "test.creator".parse().expect("invalid creator mock id"); // Change to an unauthorized creator
             let message = schema.to_ed25519_message();
             let signature = sign_transaction(&message, &caller);
             schema.signature = signature.to_bytes().to_vec();
 
             // Attempt to store the schema (this should trigger an error)
-            app.store_schema(schema.clone(), caller.public.to_bytes());
+            app.store_schema(schema.clone());
         });
 
-        // Check that the error occurred and contains the expected message
-        assert!(result.is_err(), "Expected an error, but none occurred");
+        assert!(
+            check_error("unauthorized schema creator!", result),
+            "Unexpected error message"
+        );
     }
 
     #[test]
     fn test_schema_empty_schema_definition() {
+        let caller = update_states(Some(0));
+
         let result = std::panic::catch_unwind(|| {
             let mut app = create_daosign_app();
+            let signer: AccountId = accounts(0);
 
-            let caller = create_signer();
-
-            let mut schema = create_schema(caller.public.to_bytes());
+            let mut schema = create_schema(String::from(signer.as_str()));
             schema.schema_definition.clear();
 
             let message = schema.to_ed25519_message();
@@ -489,33 +668,41 @@ mod test {
             schema.signature = signature.to_bytes().to_vec();
 
             // Attempt to store the schema (this should trigger an error)
-            app.store_schema(schema.clone(), caller.public.to_bytes());
+            app.store_schema(schema.clone());
         });
 
-        // Check that the error occurred and contains the expected message
-        assert!(result.is_err(), "Expected an error, but none occurred");
+        assert!(
+            check_error("empty schema definition!", result),
+            "Unexpected error message"
+        );
     }
 
     #[test]
     fn test_store_attestation() {
+        let caller = update_states(Some(0));
+
         let mut app = create_daosign_app();
 
-        let caller = create_signer();
+        let signatory: AccountId = accounts(1);
+        let signer: AccountId = accounts(0);
 
-        let mut schema = create_schema(caller.public.to_bytes());
+        let mut schema = create_schema(String::from(signer.as_str()));
         let message = schema.to_ed25519_message();
         let signature = sign_transaction(&message, &caller);
         schema.signature = signature.to_bytes().to_vec();
         // Store schema
-        app.store_schema(schema.clone(), caller.public.to_bytes());
+        app.store_schema(schema.clone());
 
-        let mut attestation = create_attestation(caller.public.to_bytes());
+        let mut attestation = create_attestation(
+            String::from(signer.as_str()),
+            String::from(signatory.as_str()),
+        );
 
         let a_mes = attestation.to_ed25519_message();
         let a_sig = sign_transaction(&a_mes, &caller);
         attestation.signature = a_sig.to_bytes().to_vec();
 
-        app.store_attestation(attestation.clone(), caller.public.to_bytes());
+        app.store_attestation(attestation.clone());
 
         // Verify schema is stored
         assert_eq!(app.attestations.len(), 1);
@@ -524,199 +711,254 @@ mod test {
 
     #[test]
     fn test_attestation_schema_does_not_exist() {
+        let caller = update_states(Some(0));
+
         let result = std::panic::catch_unwind(|| {
             let mut app = create_daosign_app();
 
-            let caller = create_signer();
+            let signatory: AccountId = accounts(1);
+            let signer: AccountId = accounts(0);
 
-            let mut attestation = create_attestation(caller.public.to_bytes());
+            let mut attestation = create_attestation(
+                String::from(signer.as_str()),
+                String::from(signatory.as_str()),
+            );
 
             let a_mes = attestation.to_ed25519_message();
             let a_sig = sign_transaction(&a_mes, &caller);
             attestation.signature = a_sig.to_bytes().to_vec();
 
-            app.store_attestation(attestation.clone(), caller.public.to_bytes());
+            app.store_attestation(attestation.clone());
         });
 
-        // Check that the error occurred and contains the expected message
-        assert!(result.is_err(), "Expected an error, but none occurred");
+        assert!(
+            check_error("called `Option::unwrap()` on a `None` value", result),
+            "Unexpected error message"
+        );
     }
 
     #[test]
     fn test_attestation_unauthorized_attestator() {
+        let caller = update_states(Some(0));
+
         let result = std::panic::catch_unwind(|| {
             let mut app = create_daosign_app();
 
-            let caller = create_signer();
+            let signatory: AccountId = accounts(1);
 
-            let mut schema = create_schema(caller.public.to_bytes());
+            let signer: AccountId = accounts(0);
+
+            let mut schema = create_schema(String::from(signer.as_str()));
             let message = schema.to_ed25519_message();
             let signature = sign_transaction(&message, &caller);
             schema.signature = signature.to_bytes().to_vec();
             // Store schema
-            app.store_schema(schema.clone(), caller.public.to_bytes());
+            app.store_schema(schema.clone());
 
-            let mut attestation = create_attestation(caller.public.to_bytes());
-            attestation.creator = [0u8; 32];
+            let mut attestation = create_attestation(
+                String::from(signer.as_str()),
+                String::from(signatory.as_str()),
+            );
+
+            attestation.creator = "test.test".parse().expect(" invalid precompile data");
 
             let a_mes = attestation.to_ed25519_message();
             let a_sig = sign_transaction(&a_mes, &caller);
             attestation.signature = a_sig.to_bytes().to_vec();
 
-            app.store_attestation(attestation.clone(), caller.public.to_bytes());
+            app.store_attestation(attestation.clone());
         });
 
-        // Check that the error occurred and contains the expected message
-        assert!(result.is_err(), "Expected an error, but none occurred");
+        assert!(
+            check_error("unauthorized attestator!", result),
+            "Unexpected error message"
+        );
     }
 
     #[test]
     fn test_attestation_schema_already_expired() {
+        let caller = update_states(Some(0));
+
         let result = std::panic::catch_unwind(|| {
             let mut app = create_daosign_app();
 
-            let caller = create_signer();
+            let signatory: AccountId = accounts(1);
+            let signer: AccountId = accounts(0);
 
-            let mut schema = create_schema(caller.public.to_bytes());
+            let mut schema = create_schema(String::from(signer.as_str()));
+            schema.metadata.expire_in = 1;
             let message = schema.to_ed25519_message();
             let signature = sign_transaction(&message, &caller);
             schema.signature = signature.to_bytes().to_vec();
-            schema.metadata.expire_in = 1;
 
             // Store schema
-            app.store_schema(schema.clone(), caller.public.to_bytes());
+            app.store_schema(schema.clone());
 
-            let mut attestation = create_attestation(caller.public.to_bytes());
-
+            let mut attestation = create_attestation(
+                String::from(signer.as_str()),
+                String::from(signatory.as_str()),
+            );
             let a_mes = attestation.to_ed25519_message();
             let a_sig = sign_transaction(&a_mes, &caller);
             attestation.signature = a_sig.to_bytes().to_vec();
 
-            app.store_attestation(attestation.clone(), caller.public.to_bytes());
+            app.store_attestation(attestation.clone());
         });
 
-        // Check that the error occurred and contains the expected message
-        assert!(result.is_err(), "Expected an error, but none occurred");
+        assert!(
+            check_error("schema already expired!", result),
+            "Unexpected error message"
+        );
     }
 
     #[test]
     fn test_attestation_length_mismatch() {
+        let caller = update_states(Some(0));
+
         let result = std::panic::catch_unwind(|| {
             let mut app = create_daosign_app();
 
-            let caller = create_signer();
+            let signatory: AccountId = accounts(1);
+            let signer: AccountId = accounts(0);
 
-            let mut schema = create_schema(caller.public.to_bytes());
+            let mut schema = create_schema(String::from(signer.as_str()));
             let message = schema.to_ed25519_message();
             let signature = sign_transaction(&message, &caller);
             schema.signature = signature.to_bytes().to_vec();
 
             // Store schema
-            app.store_schema(schema.clone(), caller.public.to_bytes());
+            app.store_schema(schema.clone());
 
-            let mut attestation = create_attestation(caller.public.to_bytes());
+            let mut attestation = create_attestation(
+                String::from(signer.as_str()),
+                String::from(signatory.as_str()),
+            );
             attestation.attestation_result.clear();
 
             let a_mes = attestation.to_ed25519_message();
             let a_sig = sign_transaction(&a_mes, &caller);
             attestation.signature = a_sig.to_bytes().to_vec();
 
-            app.store_attestation(attestation.clone(), caller.public.to_bytes());
+            app.store_attestation(attestation.clone());
         });
 
         // Check that the error occurred and contains the expected message
-        assert!(result.is_err(), "Expected an error, but none occurred");
+        assert!(
+            check_error("attestation length mismatch!", result),
+            "Unexpected error message"
+        );
     }
 
     #[test]
     fn test_attestation_name_mismatch() {
+        let caller = update_states(Some(0));
+
         let result = std::panic::catch_unwind(|| {
             let mut app = create_daosign_app();
 
-            let caller = create_signer();
+            let signer: AccountId = accounts(0);
+            let signatory: AccountId = accounts(1);
 
-            let mut schema = create_schema(caller.public.to_bytes());
+            let mut schema = create_schema(String::from(signer.as_str()));
             let message = schema.to_ed25519_message();
             let signature = sign_transaction(&message, &caller);
             schema.signature = signature.to_bytes().to_vec();
 
             // Store schema
-            app.store_schema(schema.clone(), caller.public.to_bytes());
+            app.store_schema(schema.clone());
 
-            let mut attestation = create_attestation(caller.public.to_bytes());
+            let mut attestation = create_attestation(
+                String::from(signer.as_str()),
+                String::from(signatory.as_str()),
+            );
             attestation.attestation_result[0].name = String::from("foo");
 
             let a_mes = attestation.to_ed25519_message();
             let a_sig = sign_transaction(&a_mes, &caller);
             attestation.signature = a_sig.to_bytes().to_vec();
 
-            app.store_attestation(attestation.clone(), caller.public.to_bytes());
+            app.store_attestation(attestation.clone());
         });
 
         // Check that the error occurred and contains the expected message
-        assert!(result.is_err(), "Expected an error, but none occurred");
+        assert!(
+            check_error("attestation name mismatch!", result),
+            "Unexpected error message"
+        );
     }
 
     #[test]
     fn test_attestation_type_mismatch() {
+        let caller = update_states(Some(0));
+
         let result = std::panic::catch_unwind(|| {
             let mut app = create_daosign_app();
 
-            let caller = create_signer();
+            let signer: AccountId = accounts(0);
+            let signatory: AccountId = accounts(1);
 
-            let mut schema = create_schema(caller.public.to_bytes());
+            let mut schema = create_schema(String::from(signer.as_str()));
             let message = schema.to_ed25519_message();
             let signature = sign_transaction(&message, &caller);
             schema.signature = signature.to_bytes().to_vec();
 
             // Store schema
-            app.store_schema(schema.clone(), caller.public.to_bytes());
+            app.store_schema(schema.clone());
 
-            let mut attestation = create_attestation(caller.public.to_bytes());
+            let mut attestation = create_attestation(
+                String::from(signer.as_str()),
+                String::from(signatory.as_str()),
+            );
             attestation.attestation_result[0].attestation_result_type = String::from("foo");
 
             let a_mes = attestation.to_ed25519_message();
             let a_sig = sign_transaction(&a_mes, &caller);
             attestation.signature = a_sig.to_bytes().to_vec();
 
-            app.store_attestation(attestation.clone(), caller.public.to_bytes());
+            app.store_attestation(attestation.clone());
         });
 
         // Check that the error occurred and contains the expected message
-        assert!(result.is_err(), "Expected an error, but none occurred");
+        assert!(
+            check_error("attestation type mismatch!", result),
+            "Unexpected error message"
+        );
     }
 
     #[test]
     fn test_store_revoke() {
+        let caller = update_states(Some(0));
+
         let mut app = create_daosign_app();
 
-        let caller = create_signer();
+        let signatory: AccountId = accounts(1);
 
-        let mut schema = create_schema(caller.public.to_bytes());
+        let signer: AccountId = accounts(0);
+
+        let mut schema = create_schema(String::from(signer.as_str()));
         let message = schema.to_ed25519_message();
         let signature = sign_transaction(&message, &caller);
         schema.signature = signature.to_bytes().to_vec();
 
         // Store schema
-        app.store_schema(schema.clone(), caller.public.to_bytes());
+        app.store_schema(schema.clone());
 
-        let mut attestation = create_attestation(caller.public.to_bytes());
+        let mut attestation = create_attestation(
+            String::from(signer.as_str()),
+            String::from(signatory.as_str()),
+        );
         let a_mes = attestation.to_ed25519_message();
         let a_sig = sign_transaction(&a_mes, &caller);
         attestation.signature = a_sig.to_bytes().to_vec();
 
-        app.store_attestation(attestation.clone(), caller.public.to_bytes());
+        app.store_attestation(attestation.clone());
 
         let r_mes = attestation.to_ed25519_message_revoke();
         let r_sig = sign_transaction(&r_mes, &caller);
 
         attestation.revoke_signature = r_sig.to_bytes().to_vec();
 
-        app.store_revoke(
-            attestation.attestation_id,
-            attestation.revoke_signature,
-            caller.public.to_bytes(),
-        );
+        app.store_revoke(attestation.attestation_id, attestation.revoke_signature);
         // Verify schema is stored
         assert_eq!(app.attestations.len(), 1);
         if let Some(a) = app.attestations.get(&0) {
@@ -729,140 +971,163 @@ mod test {
 
     #[test]
     fn test_revoke_attestation_does_not_exist() {
+        let caller = update_states(Some(0));
+
         let result = std::panic::catch_unwind(|| {
             let mut app = create_daosign_app();
 
             let caller = create_signer();
+            let signer: AccountId = accounts(0);
+            let signatory: AccountId = accounts(1);
 
-            let mut attestation = create_attestation(caller.public.to_bytes());
-
+            let mut attestation = create_attestation(
+                String::from(signer.as_str()),
+                String::from(signatory.as_str()),
+            );
             let r_mes = attestation.to_ed25519_message_revoke();
             let r_sig = sign_transaction(&r_mes, &caller);
 
             attestation.revoke_signature = r_sig.to_bytes().to_vec();
 
-            app.store_revoke(
-                attestation.attestation_id,
-                attestation.revoke_signature,
-                caller.public.to_bytes(),
-            );
+            app.store_revoke(attestation.attestation_id, attestation.revoke_signature);
         });
 
         // Check that the error occurred and contains the expected message
-        assert!(result.is_err(), "Expected an error, but none occurred");
+        assert!(
+            check_error("called `Option::unwrap()` on a `None` value", result),
+            "Unexpected error message"
+        );
     }
 
     #[test]
     fn test_revoke_unauthorized_attestator() {
+        let caller = update_states(Some(0));
+
         let result = std::panic::catch_unwind(|| {
             let mut app = create_daosign_app();
 
-            let caller = create_signer();
+            let signatory: AccountId = accounts(1);
+            let signer: AccountId = accounts(0);
 
-            let mut schema = create_schema(caller.public.to_bytes());
+            let mut schema = create_schema(String::from(signer.as_str()));
             let message = schema.to_ed25519_message();
             let signature = sign_transaction(&message, &caller);
             schema.signature = signature.to_bytes().to_vec();
 
             // Store schema
-            app.store_schema(schema.clone(), caller.public.to_bytes());
+            app.store_schema(schema.clone());
 
-            let mut attestation = create_attestation(caller.public.to_bytes());
+            let mut attestation = create_attestation(
+                String::from(signatory.as_str()),
+                String::from(signer.as_str()),
+            );
             let a_mes = attestation.to_ed25519_message();
             let a_sig = sign_transaction(&a_mes, &caller);
             attestation.signature = a_sig.to_bytes().to_vec();
 
-            app.store_attestation(attestation.clone(), caller.public.to_bytes());
+            app.store_attestation(attestation.clone());
 
             let r_mes = attestation.to_ed25519_message_revoke();
 
-            let sec_caller = create_signer();
+            let sec_caller = update_states(Some(1));
             let r_sig = sign_transaction(&r_mes, &sec_caller);
 
             attestation.revoke_signature = r_sig.to_bytes().to_vec();
 
-            app.store_revoke(
-                attestation.attestation_id,
-                attestation.revoke_signature,
-                caller.public.to_bytes(),
-            );
+            app.store_revoke(attestation.attestation_id, attestation.revoke_signature);
         });
 
         // Check that the error occurred and contains the expected message
-        assert!(result.is_err(), "Expected an error, but none occurred");
+        assert!(
+            check_error("unauthorized attestator!", result),
+            "Unexpected error message"
+        );
     }
 
     #[test]
     fn test_store_pos_and() {
+        let caller = update_states(Some(0));
+
         let mut app = create_daosign_app();
 
-        let caller = create_signer();
+        let signatory: AccountId = accounts(1);
 
-        let mut schema = create_schema(caller.public.to_bytes());
+        let signer: AccountId = accounts(0);
+
+        let mut schema = create_schema(String::from(signer.as_str()));
         let message = schema.to_ed25519_message();
         let signature = sign_transaction(&message, &caller);
         schema.signature = signature.to_bytes().to_vec();
         // Store schema
-        app.store_schema(schema.clone(), caller.public.to_bytes());
+        app.store_schema(schema.clone());
 
-        let mut attestation = create_attestation(caller.public.to_bytes());
-
+        let mut attestation = create_attestation(
+            String::from(signer.as_str()),
+            String::from(signatory.as_str()),
+        );
         let a_mes = attestation.to_ed25519_message();
         let a_sig = sign_transaction(&a_mes, &caller);
         attestation.signature = a_sig.to_bytes().to_vec();
 
-        app.store_attestation(attestation.clone(), caller.public.to_bytes());
+        app.store_attestation(attestation.clone());
 
-        let mut pos = create_pos(attestation.attestation_id, caller.public.to_bytes());
+        let mut pos = create_pos(attestation.attestation_id, String::from(signer.as_str()));
 
         let pos_mes = pos.to_ed25519_message();
         let pos_sig = sign_transaction(&pos_mes, &caller);
 
         pos.signature = pos_sig.to_bytes().to_vec();
 
-        app.store_pos(pos, caller.public.to_bytes());
-        // println!("poa {:?}", app.poa.get(&0))
+        app.store_pos(pos);
     }
 
     #[test]
     fn test_store_pos_or() {
+        let caller = update_states(Some(0));
+
         let mut app = create_daosign_app();
 
-        let caller = create_signer();
+        let signatory: AccountId = accounts(1);
+        let signer: AccountId = accounts(0);
 
-        let mut schema = create_schema(caller.public.to_bytes());
+        let mut schema = create_schema(String::from(signer.as_str()));
         schema.signatory_policy[0].operator = 0x02;
         let message = schema.to_ed25519_message();
         let signature = sign_transaction(&message, &caller);
         schema.signature = signature.to_bytes().to_vec();
         // Store schema
-        app.store_schema(schema.clone(), caller.public.to_bytes());
+        app.store_schema(schema.clone());
 
-        let mut attestation = create_attestation(caller.public.to_bytes());
-
+        let mut attestation = create_attestation(
+            String::from(signer.as_str()),
+            String::from(signatory.as_str()),
+        );
         let a_mes = attestation.to_ed25519_message();
         let a_sig = sign_transaction(&a_mes, &caller);
         attestation.signature = a_sig.to_bytes().to_vec();
 
-        app.store_attestation(attestation.clone(), caller.public.to_bytes());
+        app.store_attestation(attestation.clone());
 
-        let mut pos = create_pos(attestation.attestation_id, caller.public.to_bytes());
+        let mut pos = create_pos(attestation.attestation_id, String::from(signer.as_str()));
 
         let pos_mes = pos.to_ed25519_message();
         let pos_sig = sign_transaction(&pos_mes, &caller);
 
         pos.signature = pos_sig.to_bytes().to_vec();
 
-        app.store_pos(pos, caller.public.to_bytes());
+        app.store_pos(pos);
     }
 
     #[test]
     fn test_store_pos_not() {
+        let caller = update_states(Some(0));
+
         let mut app = create_daosign_app();
 
-        let caller = create_signer();
+        let signatory: AccountId = accounts(1);
+        let signer: AccountId = accounts(0);
 
-        let mut schema = create_schema(caller.public.to_bytes());
+        let mut schema = create_schema(String::from(signer.as_str()));
         schema.signatory_policy[0].required_schema_id.clear();
         schema.signatory_policy[0].required_schema_id = [1].to_vec();
         schema.signatory_policy[0].operator = 0x03;
@@ -870,133 +1135,209 @@ mod test {
         let signature = sign_transaction(&message, &caller);
         schema.signature = signature.to_bytes().to_vec();
         // Store schema
-        app.store_schema(schema.clone(), caller.public.to_bytes());
+        app.store_schema(schema.clone());
 
-        let mut attestation = create_attestation(caller.public.to_bytes());
-
+        let mut attestation = create_attestation(
+            String::from(signer.as_str()),
+            String::from(signatory.as_str()),
+        );
         let a_mes = attestation.to_ed25519_message();
         let a_sig = sign_transaction(&a_mes, &caller);
         attestation.signature = a_sig.to_bytes().to_vec();
 
-        app.store_attestation(attestation.clone(), caller.public.to_bytes());
+        app.store_attestation(attestation.clone());
 
-        let mut pos = create_pos(attestation.attestation_id, caller.public.to_bytes());
+        let mut pos = create_pos(attestation.attestation_id, String::from(signer.as_str()));
 
         let pos_mes = pos.to_ed25519_message();
         let pos_sig = sign_transaction(&pos_mes, &caller);
 
         pos.signature = pos_sig.to_bytes().to_vec();
 
-        app.store_pos(pos, caller.public.to_bytes());
+        app.store_pos(pos);
     }
 
     #[test]
     fn test_pos_invalid_signatory_address() {
+        let caller = update_states(Some(0));
+
         let result = std::panic::catch_unwind(|| {
             let mut app = create_daosign_app();
 
-            let caller = create_signer();
+            let signatory: AccountId = accounts(1);
+            let signer: AccountId = accounts(0);
 
-            let mut schema = create_schema(caller.public.to_bytes());
+            let mut schema = create_schema(String::from(signer.as_str()));
             let message = schema.to_ed25519_message();
             let signature = sign_transaction(&message, &caller);
             schema.signature = signature.to_bytes().to_vec();
             // Store schema
-            app.store_schema(schema.clone(), caller.public.to_bytes());
+            app.store_schema(schema.clone());
 
-            let mut attestation = create_attestation(caller.public.to_bytes());
-
+            let mut attestation = create_attestation(
+                String::from(signer.as_str()),
+                String::from(signatory.as_str()),
+            );
             let a_mes = attestation.to_ed25519_message();
             let a_sig = sign_transaction(&a_mes, &caller);
             attestation.signature = a_sig.to_bytes().to_vec();
 
-            app.store_attestation(attestation.clone(), caller.public.to_bytes());
-            let caller_two = create_signer();
+            app.store_attestation(attestation.clone());
 
-            let mut pos = create_pos(attestation.attestation_id, caller_two.public.to_bytes());
+            let mut pos = create_pos(attestation.attestation_id, String::from(signer.as_str()));
 
+            let sec_caller = update_states(Some(1));
             let pos_mes = pos.to_ed25519_message();
-            let pos_sig = sign_transaction(&pos_mes, &caller_two);
+            let pos_sig = sign_transaction(&pos_mes, &sec_caller);
 
             pos.signature = pos_sig.to_bytes().to_vec();
+            update_states(Some(2));
 
-            app.store_pos(pos, caller_two.public.to_bytes());
+            app.store_pos(pos);
         });
 
         // Check that the error occurred and contains the expected message
-        assert!(result.is_err(), "Expected an error, but none occurred");
+        assert!(
+            check_error("Invalid signatory address.", result),
+            "Unexpected error message"
+        );
     }
 
     #[test]
     fn test_pos_unsupported_operator() {
+        let caller = update_states(Some(0));
+
         let result = std::panic::catch_unwind(|| {
             let mut app = create_daosign_app();
 
-            let caller = create_signer();
+            let signatory: AccountId = accounts(1);
+            let signer: AccountId = accounts(0);
 
-            let mut schema = create_schema(caller.public.to_bytes());
+            let mut schema = create_schema(String::from(signer.as_str()));
             schema.signatory_policy[0].operator = 0x04;
             let message = schema.to_ed25519_message();
             let signature = sign_transaction(&message, &caller);
             schema.signature = signature.to_bytes().to_vec();
             // Store schema
-            app.store_schema(schema.clone(), caller.public.to_bytes());
+            app.store_schema(schema.clone());
 
-            let mut attestation = create_attestation(caller.public.to_bytes());
-
+            let mut attestation = create_attestation(
+                String::from(signer.as_str()),
+                String::from(signatory.as_str()),
+            );
             let a_mes = attestation.to_ed25519_message();
             let a_sig = sign_transaction(&a_mes, &caller);
             attestation.signature = a_sig.to_bytes().to_vec();
 
-            app.store_attestation(attestation.clone(), caller.public.to_bytes());
+            app.store_attestation(attestation.clone());
 
-            let mut pos = create_pos(attestation.attestation_id, caller.public.to_bytes());
+            let mut pos = create_pos(attestation.attestation_id, String::from(signer.as_str()));
 
             let pos_mes = pos.to_ed25519_message();
             let pos_sig = sign_transaction(&pos_mes, &caller);
 
             pos.signature = pos_sig.to_bytes().to_vec();
 
-            app.store_pos(pos, caller.public.to_bytes());
+            app.store_pos(pos);
         });
 
         // Check that the error occurred and contains the expected message
-        assert!(result.is_err(), "Expected an error, but none occurred");
+        assert!(
+            check_error("Unsupported operator", result),
+            "Unexpected error message"
+        );
     }
 
     #[test]
     fn test_pos_insufficient_attestations() {
+        let caller = update_states(Some(0));
+
         let result = std::panic::catch_unwind(|| {
             let mut app = create_daosign_app();
 
-            let caller = create_signer();
+            let signatory: AccountId = accounts(1);
+            let signer: AccountId = accounts(0);
 
-            let mut schema = create_schema(caller.public.to_bytes());
+            let mut schema = create_schema(String::from(signer.as_str()));
             schema.signatory_policy[0].required_schema_id.push(1);
             let message = schema.to_ed25519_message();
             let signature = sign_transaction(&message, &caller);
             schema.signature = signature.to_bytes().to_vec();
             // Store schema
-            app.store_schema(schema.clone(), caller.public.to_bytes());
+            app.store_schema(schema.clone());
 
-            let mut attestation = create_attestation(caller.public.to_bytes());
-
+            let mut attestation = create_attestation(
+                String::from(signer.as_str()),
+                String::from(signatory.as_str()),
+            );
             let a_mes = attestation.to_ed25519_message();
             let a_sig = sign_transaction(&a_mes, &caller);
             attestation.signature = a_sig.to_bytes().to_vec();
 
-            app.store_attestation(attestation.clone(), caller.public.to_bytes());
+            app.store_attestation(attestation.clone());
 
-            let mut pos = create_pos(attestation.attestation_id, caller.public.to_bytes());
+            let mut pos = create_pos(attestation.attestation_id, String::from(signer.as_str()));
 
             let pos_mes = pos.to_ed25519_message();
             let pos_sig = sign_transaction(&pos_mes, &caller);
 
             pos.signature = pos_sig.to_bytes().to_vec();
 
-            app.store_pos(pos, caller.public.to_bytes());
+            app.store_pos(pos);
         });
         // Check that the error occurred and contains the expected message
-        assert!(result.is_err(), "Expected an error, but none occurred");
+        assert!(
+            check_error("insufficient attestations.", result),
+            "Unexpected error message"
+        );
+    }
+
+    #[test]
+    fn test_store_poa_two_signatory() {
+        let caller = update_states(Some(0));
+
+        let mut app = create_daosign_app();
+
+        let signatory: AccountId = accounts(1);
+
+        let signer: AccountId = accounts(0);
+
+        let mut schema = create_schema(String::from(signer.as_str()));
+        let message = schema.to_ed25519_message();
+        let signature = sign_transaction(&message, &caller);
+        schema.signature = signature.to_bytes().to_vec();
+
+        // Store schema
+        app.store_schema(schema.clone());
+
+        let mut attestation = create_attestation(
+            String::from(signer.as_str()),
+            String::from(signatory.as_str()),
+        );
+        let a_mes = attestation.to_ed25519_message();
+        let a_sig = sign_transaction(&a_mes, &caller);
+        attestation.signature = a_sig.to_bytes().to_vec();
+
+        // Store attestation
+        app.store_attestation(attestation.clone());
+
+        let mut pos = create_pos(attestation.attestation_id, String::from(signer.as_str()));
+        let pos_mes = pos.to_ed25519_message();
+        let pos_sig = sign_transaction(&pos_mes, &caller);
+
+        pos.signature = pos_sig.to_bytes().to_vec();
+
+        app.store_pos(pos);
+
+        let sec_caller = update_states(Some(1));
+
+        let mut sec_pos = create_pos(attestation.attestation_id, String::from(signer.as_str()));
+        let sec_pos_mes = sec_pos.to_ed25519_message();
+        let sec_pos_sig = sign_transaction(&sec_pos_mes, &sec_caller);
+
+        sec_pos.signature = sec_pos_sig.to_bytes().to_vec();
+
+        app.store_pos(sec_pos);
+        assert!(app.poa.len() == 1);
     }
 }

@@ -16,7 +16,6 @@ mod tests {
         Keypair::generate(&mut csprng)
     }
     fn sign_transaction(message: &[u8], signer: &Keypair) -> Signature {
-        println!("message {:?}", message);
         signer.sign(message)
     }
 
