@@ -322,7 +322,7 @@ mod daosign_app {
 
             // Create the ProofOfAgreement struct
             let proof_of_agreement = ProofOfAgreement {
-                attestation_id: self.attestation_id,
+                attestation_id: a.attestation_id,
                 signatures: signatory_proofs, // Store the collected signatures
             };
             self.poa
