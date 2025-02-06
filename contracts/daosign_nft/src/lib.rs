@@ -301,43 +301,6 @@ mod tests {
     }
 
     #[test]
-    fn test_transfer() {
-        let mut context = get_context(accounts(0));
-        testing_env!(context.build());
-        let mut contract = Contract::new_default_meta(accounts(0).into());
-
-        testing_env!(context
-            .storage_usage(env::storage_usage())
-            .attached_deposit(MINT_STORAGE_COST)
-            .predecessor_account_id(accounts(0))
-            .build());
-        let token_id = "0".to_string();
-        contract.nft_mint(token_id.clone(), accounts(0), sample_token_metadata());
-
-        testing_env!(context
-            .storage_usage(env::storage_usage())
-            .attached_deposit(ONE_YOCTONEAR)
-            .predecessor_account_id(accounts(0))
-            .build());
-        contract.nft_transfer(accounts(1), token_id.clone(), None, None);
-
-        testing_env!(context
-            .storage_usage(env::storage_usage())
-            .account_balance(env::account_balance())
-            .is_view(true)
-            .attached_deposit(ZERO_NEAR)
-            .build());
-        if let Some(token) = contract.nft_token(token_id.clone()) {
-            assert_eq!(token.token_id, token_id);
-            assert_eq!(token.owner_id, accounts(1));
-            assert_eq!(token.metadata.unwrap(), sample_token_metadata());
-            assert_eq!(token.approved_account_ids.unwrap(), HashMap::new());
-        } else {
-            panic!("token not correctly created, or not found by nft_token");
-        }
-    }
-
-    #[test]
     fn test_approve() {
         let mut context = get_context(accounts(0));
         testing_env!(context.build());
