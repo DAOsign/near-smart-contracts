@@ -1,8 +1,7 @@
 mod daosign_app {
-    use ed25519_dalek::PublicKey;
     use near_sdk::{
         borsh::{self, BorshDeserialize, BorshSerialize},
-        env, log, near_bindgen, serde_json, AccountId, Gas, NearToken, Promise, PromiseError,
+        env, log, near_bindgen, serde_json, AccountId, Gas, NearToken, Promise,
     };
     use serde::{Deserialize, Serialize};
     use serde_json::json;
@@ -107,7 +106,7 @@ mod daosign_app {
             self.schema_id += 1;
 
             // Emit event
-            // log!("Event: SchemaCreated {{ data: {:?} }}", data.clone());
+            log!("Event: SchemaCreated {{ data: {:?} }}", data.clone());
         }
 
         /// # Message to store a Attestation.
@@ -150,7 +149,7 @@ mod daosign_app {
                 Promise::new(contract_address.clone()).function_call(
                     String::from("nft_mint"),
                     args,
-                    NearToken::from_yoctonear(10_250_000_000_000_000_000_000),
+                    NearToken::from_yoctonear(5_250_000_000_000_000_000_000),
                     Gas::from_tgas(5),
                 );
             }
@@ -165,7 +164,7 @@ mod daosign_app {
             self.attestation_id += 1;
 
             //Emit event
-            // log!("Event: AttestationCreated {{ data: {:?} }}", data);
+            log!("Event: AttestationCreated {{ data: {:?} }}", data);
         }
 
         /// # Message to store a Revoke.
@@ -201,7 +200,7 @@ mod daosign_app {
                 Promise::new(contract_address.clone()).function_call(
                     String::from("nft_burn"),
                     args,
-                    NearToken::from_yoctonear(10_250_000_000_000_000_000_000),
+                    NearToken::from_yoctonear(5_250_000_000_000_000_000_000),
                     Gas::from_tgas(5),
                 );
             }
@@ -231,7 +230,7 @@ mod daosign_app {
             self.attestations.insert(a.attestation_id, a.clone());
 
             //Emit event
-            // log!("Event: Revoked {{ attestation: {:?} }}", a);
+            log!("Event: Revoked {{ attestation: {:?} }}", a);
         }
 
         /// # Message to store a Proof of Signature.
@@ -277,10 +276,10 @@ mod daosign_app {
                 .or_insert_with(HashMap::new)
                 .insert(String::from(caller_id.clone().as_str()), true);
 
-            // log!(
-            //     "Event: ProofOfSignatureStored {{pos: {:?} }} ",
-            //     data.clone()
-            // );
+            log!(
+                "Event: ProofOfSignatureStored {{pos: {:?} }} ",
+                data.clone()
+            );
         }
 
         /// # Message to store a Proof of Agreement.
@@ -317,7 +316,7 @@ mod daosign_app {
             Promise::new(contract_address.clone()).function_call(
                 String::from("nft_mint"),
                 args,
-                NearToken::from_yoctonear(10_250_000_000_000_000_000_000),
+                NearToken::from_yoctonear(5_250_000_000_000_000_000_000),
                 Gas::from_tgas(5),
             );
 
@@ -330,10 +329,10 @@ mod daosign_app {
                 .entry(a.attestation_id)
                 .or_insert_with(Vec::new)
                 .push(proof_of_agreement.clone());
-            // log!(
-            //     "Event: ProofOfAgreementStored {{poa: {:?} }} ",
-            //     proof_of_agreement.clone()
-            // );
+            log!(
+                "Event: ProofOfAgreementStored {{poa: {:?} }} ",
+                proof_of_agreement.clone()
+            );
         }
 
         /// # Util method to store user attestation.
