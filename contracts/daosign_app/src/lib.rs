@@ -141,7 +141,7 @@ mod daosign_app {
                 let args = json!({
                     "token_id": data.attestation_id.to_string(),
                     "token_owner_id": data.recipient,
-                    "token_metadata":sample_token_metadata()
+                    "token_metadata":daosign_metadata()
                 })
                 .to_string()
                 .into_bytes();
@@ -308,7 +308,7 @@ mod daosign_app {
             let args = json!({
                 "token_id": a.attestation_id.to_string(),
                 "token_owner_id": env::current_account_id(),
-                "token_metadata":sample_token_metadata()
+                "token_metadata":daosign_metadata()
             })
             .to_string()
             .into_bytes();
@@ -420,7 +420,7 @@ mod daosign_app {
                 .unwrap_or_else(Vec::new) // If None, return an empty Vec
         }
     }
-    pub fn sample_token_metadata() -> TokenMetadata {
+    pub fn daosign_metadata() -> TokenMetadata {
         TokenMetadata {
             title: Some("Olympus Mons".into()),
             description: Some("The tallest mountain in the charted solar system".into()),
