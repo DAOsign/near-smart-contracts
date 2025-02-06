@@ -1,1 +1,0 @@
-window.ALL_CRATES = ["daosign_eip712","daosign_proof_of_agreement","daosign_proof_of_authority","daosign_proof_of_signature","k256"];

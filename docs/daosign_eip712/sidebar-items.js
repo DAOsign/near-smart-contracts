@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["CONTRACT_SOURCE_METADATA"],"fn":["hash","recover","sha3"],"struct":["EIP712Domain","EIP712DomainExt"],"trait":["Packable"]};

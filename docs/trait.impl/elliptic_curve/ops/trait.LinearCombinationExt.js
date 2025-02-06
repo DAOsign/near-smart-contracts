@@ -1,3 +1,0 @@
-(function() {var implementors = {
-"k256":[["impl&lt;const N: <a class=\"primitive\" href=\"https://doc.rust-lang.org/1.77.2/std/primitive.usize.html\">usize</a>&gt; LinearCombinationExt&lt;[(<a class=\"struct\" href=\"k256/struct.ProjectivePoint.html\" title=\"struct k256::ProjectivePoint\">ProjectivePoint</a>, <a class=\"struct\" href=\"k256/struct.Scalar.html\" title=\"struct k256::Scalar\">Scalar</a>); <a class=\"primitive\" href=\"https://doc.rust-lang.org/1.77.2/std/primitive.array.html\">N</a>]&gt; for <a class=\"struct\" href=\"k256/struct.ProjectivePoint.html\" title=\"struct k256::ProjectivePoint\">ProjectivePoint</a>"]]
-};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

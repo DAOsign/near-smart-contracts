@@ -1,3 +1,0 @@
-(function() {var implementors = {
-"k256":[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.77.2/core/ops/bit/trait.ShrAssign.html\" title=\"trait core::ops::bit::ShrAssign\">ShrAssign</a>&lt;<a class=\"primitive\" href=\"https://doc.rust-lang.org/1.77.2/std/primitive.usize.html\">usize</a>&gt; for <a class=\"struct\" href=\"k256/struct.Scalar.html\" title=\"struct k256::Scalar\">Scalar</a>"]]
-};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
